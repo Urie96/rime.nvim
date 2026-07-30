@@ -7,5 +7,7 @@ build/
 .cache/
 .xmake/
 
+result
+
 /rime.nobj.o
 *.so
