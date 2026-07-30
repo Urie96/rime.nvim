@@ -3,8 +3,6 @@
 ---@module ime.nvim.win
 ---@diagnostic disable: undefined-global
 -- luacheck: ignore 112 113
-local fn = require 'ime.fn'
-
 -- ensure rime highlight groups exist
 local function ensure_highlights()
   pcall(vim.api.nvim_set_hl, 0, 'RimeIndex', { fg = '#909090' })
@@ -92,7 +90,7 @@ function M.Win:update(lines, col, highlights)
     self.highlights = highlights or {}
     local width = 0
     for _, line in ipairs(self.lines) do
-        width = math.max(fn.strwidth(line), width)
+        width = math.max(vim.fn.strwidth(line), width)
     end
     self.config = {
         relative = "cursor",

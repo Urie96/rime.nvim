@@ -1,11 +1,11 @@
----rime support for neovim based `rime.Rime()`.
+---Consolidated rime for Neovim.
 ---@diagnostic disable: undefined-global
 -- luacheck: ignore 112 113
 local Win = require "ime.nvim.win".Win
 local Keymap = require "ime.nvim.keymap".Keymap
-local Hook = require "ime.nvim.hooks.chainedhook".ChainedHook
-
-local Rime = require "rime.rime".Rime
+local Key = require('rime.key').Key
+local UI = require('ime.ui.horizontal').UI
+local Session = require('rime.session').Session
 
 local M = {
     Rime = {
@@ -31,18 +31,46 @@ end
 function M.Rime:new(rime)
     rime = rime or {}
     rime.keymap = rime.keymap or Keymap()
-    rime.hook = rime.hook or Hook()
-    rime = Rime(rime)
-    setmetatable(rime, {
-        __index = self
-    })
+    rime.session = rime.session or Session()
+    rime.ui = rime.ui or UI()
+    if rime.trigger then rime:process(rime.trigger.code, rime.trigger.mask) end
+    setmetatable(rime, { __index = self })
     return rime
 end
 
 setmetatable(M.Rime, {
-    __index = Rime,
     __call = M.Rime.new
 })
+
+---process keys through session and draw UI
+---@param ... table
+---@return string, string[], integer, table
+function M.Rime:draw(...)
+    for _, key in ipairs { ... } do
+        local code = key.code
+        if code == 65362 then        -- Up → Page_Up
+            code = 65365
+        elseif code == 65364 then    -- Down → Page_Down
+            code = 65366
+        end
+        if not self.session:process_key(code, key.mask) then return tostring(key), {}, 0, {} end
+    end
+    local context = self.session:get_context()
+    if context == nil or context.menu.num_candidates == 0 then return self.session:get_commit_text(), {}, 0, {} end
+    local lines, col, highlights = self.ui:draw(context)
+    return '', lines, col, highlights or {}
+end
+
+---wrap `self:draw()` with vim key name conversion
+---@param ... string
+---@return ...
+function M.Rime:process(...)
+    local keys = {}
+    for _, name in ipairs { ... } do
+        table.insert(keys, Key:from_vim(name))
+    end
+    return self:draw(unpack(keys))
+end
 
 ---create autocmds.
 ---@param augroup_id integer?
@@ -64,13 +92,6 @@ function M.Rime:create_autocmds(augroup_id)
             self.win:update()
         end
     })
-
-    vim.api.nvim_create_autocmd("BufEnter", {
-        group = augroup_id,
-        callback = function()
-            self.hook:update(self, self:get_enabled())
-        end
-    })
 end
 
 ---get current schema ID, aka short name
@@ -85,10 +106,7 @@ function M.Rime:get_schema_name()
     return self.session:get_schema_name()
 end
 
----override `IME`.
----@section overrides
-
----wrap `self:process()`
+---execute rime for a single input character
 ---@param input string?
 function M.Rime:exe(input)
     input = input or vim.v.char
@@ -105,27 +123,86 @@ function M.Rime:exe(input)
     M.feed_keys(text)
     self.win:update(lines, col, highlights)
     self.keymap:set_special(self.win:has_preedit() and self.callback or nil, self)
-    -- change input schema
-    if text == "" then
-        self.hook:update(self, self:get_enabled())
-    end
 end
 
 ---save the flag to use IM in insert mode for each buffer.
----override `self.iminsert` because it is global to all buffers.
 ---@param is_enabled boolean
--- luacheck: ignore 212/self
 function M.Rime:set_enabled(is_enabled)
     self.keymap:set_nowait(is_enabled)
-    self.hook:update(self, is_enabled)
     vim.b.iminsert = is_enabled or nil
 end
 
----similar to `set_enabled()`.
+---check if rime is enabled for current buffer.
 ---@return boolean
--- luacheck: ignore 212/self
 function M.Rime:get_enabled()
     return vim.b.iminsert
+end
+
+---enable rime.
+---@return boolean
+function M.Rime:enable()
+    if self:get_enabled() == false then
+        self:set_enabled(true)
+        return true
+    end
+    return false
+end
+
+---disable rime.
+---@return boolean
+function M.Rime:disable()
+    if self:get_enabled() then
+        self:set_enabled(false)
+        return true
+    end
+    return false
+end
+
+---toggle rime on/off.
+function M.Rime:toggle()
+    self:set_enabled(not self:get_enabled())
+end
+
+---wrap `self:exe()` with enabled check
+---@param ... any
+function M.Rime:call(...)
+    if not self:get_enabled() then
+        return
+    end
+    self:exe(...)
+end
+
+---create a callback function for Neovim autocmds
+---@param key any?
+---@return function
+function M.Rime:callback(key)
+    return function()
+        return self:call(key)
+    end
+end
+
+---get an enable callback
+---@return function
+function M.Rime:enable_cb()
+    return function()
+        self:enable()
+    end
+end
+
+---get a disable callback
+---@return function
+function M.Rime:disable_cb()
+    return function()
+        self:disable()
+    end
+end
+
+---get a toggle callback
+---@return function
+function M.Rime:toggle_cb()
+    return function()
+        self:toggle()
+    end
 end
 
 return M
