@@ -1,6 +1,6 @@
 -- luacheck: ignore 113
 ---@diagnostic disable: undefined-global
-c_module "rime" {
+c_module "rimeshim" {
     use_globals = true,
     include "rime_api.h",
     c_source [[

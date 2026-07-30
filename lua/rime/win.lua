@@ -1,6 +1,6 @@
 ---Wrap `vim.api.nvim_open_win()`.
 ---NOTE: `ui:draw()`'s output is `win:update()`'s input
----@module ime.nvim.win
+---@module rime.win
 ---@diagnostic disable: undefined-global
 -- luacheck: ignore 112 113
 -- ensure rime highlight groups exist

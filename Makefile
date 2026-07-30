@@ -1,6 +1,6 @@
 # rime.nvim - librime Lua binding
 #
-# Build rime.so from rime.nobj.c (committed or generated).
+# Build rimeshim.so from rime.nobj.c (committed or generated).
 #
 # Requirements:
 #   - C/C++ compiler (clang/macOS or gcc/Linux)
@@ -37,22 +37,13 @@ CFLAGS ?= -O3 -Wno-int-conversion
 # .c 依赖所有 .nobj.lua（rime.nobj.lua 通过 subfiles 引用 src/*.nobj.lua）
 NOBJ_DEPS := rime.nobj.lua src/traits.nobj.lua src/session.nobj.lua
 
-all: lua/rime.so
+all: lua/rimeshim.so
 
-rime.nobj.c: $(NOBJ_DEPS)
-	@echo "  → $@ 需要更新"
-	if command -v native_objects >/dev/null 2>&1; then \
-	  echo "  用 native_objects 生成..."; \
-	  native_objects -outpath . -gen lua rime.nobj.lua; \
-	else \
-	  echo "  ❌ native_objects 不可用，无法重新生成 $@"; \
-	fi
-
-lua/rime.so: rime.nobj.c
+lua/rimeshim.so: rime.nobj.c
 	$(CC) -c $(CFLAGS) $(LUAJIT_CFLAGS) $(LIBRIME_CFLAGS) -o rime.nobj.o rime.nobj.c
-	$(CXX) -o lua/rime.so rime.nobj.o $(LIBRIME_LIBS) -bundle -undefined dynamic_lookup
+	$(CXX) -o lua/rimeshim.so rime.nobj.o $(LIBRIME_LIBS) -bundle -undefined dynamic_lookup
 
 clean:
-	rm -f rime.nobj.o lua/rime.so
+	rm -f rime.nobj.o lua/rimeshim.so
 
 .PHONY: all clean fix_rpath

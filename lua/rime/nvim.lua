@@ -5,7 +5,7 @@ local M = {}
 ---@param augroup_id integer?
 function M.init(augroup_id)
     if M.ime == nil then
-        local Rime = require('rime.nvim.rime').Rime
+        local Rime = require('rime.rime').Rime
         M.ime = Rime(M.rime)
         M.ime:create_autocmds(augroup_id)
     end

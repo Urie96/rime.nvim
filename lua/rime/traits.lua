@@ -3,7 +3,7 @@
 local fn = vim.fn
 local home = fn.expand '~'
 
-local Traits = require 'rime'.Traits
+local Traits = require 'rimeshim'.Traits
 local M = {
     --- Value is passed to Glog library using FLAGS_minloglevel variable.
     log_level = {

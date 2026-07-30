@@ -1,5 +1,5 @@
 ---config for keys.
----@module ime.nvim.keymap
+---@module rime.keymap
 ---@diagnostic disable: undefined-global
 -- luacheck: ignore 112 113
 local nowait = { "!", "<Bar>", "}", "~" }

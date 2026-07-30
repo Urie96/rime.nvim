@@ -27,6 +27,6 @@ pkgs.stdenv.mkDerivation {
 
   installPhase = ''
     mkdir -p $out/lua
-    cp lua/rime.so $out/lua/rime.so
+    cp lua/rimeshim.so $out/lua/rimeshim.so
   '';
 }

@@ -1,5 +1,5 @@
 ---wrap `rime.Session()`
-local rime = require "rime"
+local rime = require "rimeshim"
 local Key = require 'rime.key'.Key
 local Traits = require 'rime.traits'.Traits
 
@@ -94,7 +94,7 @@ function M.Session:parse_key(name)
     return self:process_key(key.code, key.mask)
 end
 
----get context with all candidates, useful for `lua.rime.nvim.cmp`
+---get context with all candidates
 ---@param input string
 ---@return table
 function M.Session:get_full_context(input)

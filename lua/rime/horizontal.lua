@@ -1,6 +1,6 @@
 ---Provide a horizontal UI.
 ---NOTE: `ui:draw()`'s output is `win:update()`'s input
----@module ime.ui.horizontal
+---@module rime.horizontal
 local M = {
   --- config for IME UI
   UI = {

@@ -1,10 +1,10 @@
 ---Consolidated rime for Neovim.
 ---@diagnostic disable: undefined-global
 -- luacheck: ignore 112 113
-local Win = require "ime.nvim.win".Win
-local Keymap = require "ime.nvim.keymap".Keymap
+local Win = require "rime.win".Win
+local Keymap = require "rime.keymap".Keymap
 local Key = require('rime.key').Key
-local UI = require('ime.ui.horizontal').UI
+local UI = require('rime.horizontal').UI
 local Session = require('rime.session').Session
 
 local M = {
