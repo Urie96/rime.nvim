@@ -1,7 +1,7 @@
 ---wrap `rime.Traits()`
 ---@module rime.traits
-local fn = require 'vim.fn'
-local PlatformDirs = require 'platformdirs'.PlatformDirs
+local fn = vim.fn
+local home = fn.expand '~'
 
 local Traits = require 'rime'.Traits
 local _, distribution_version = pcall(require, 'rime.version')
@@ -20,9 +20,7 @@ local M = {
         user_data_dir = "/sdcard/rime", -- directory store user data
         -- Value is passed to Glog library using FLAGS_log_dir variable.
         -- NULL means temporary directory, and "" means only writing to stderr.
-        log_dir = PlatformDirs {
-            appname = "nvim", version = "rime"
-        }:user_state_dir(), -- Directory of log files.
+        log_dir = home .. "/.local/state/rime.nvim", -- Directory of log files.
         app_name = "rime.nvim-rime", -- Pass a C-string constant in the format "rime.x"
         -- where 'x' is the name of your application.
         -- Add prefix "rime." to ensure old log files are automatically cleaned.
@@ -33,15 +31,20 @@ local M = {
     },
 }
 
-for _, dir in ipairs(PlatformDirs { appname = "rime-data", multipath = true }:site_data_dirs()) do
+for _, dir in ipairs {
+    home .. "/.local/share/rime-data",
+    "/usr/share/rime-data",
+    "/usr/local/share/rime-data",
+} do
     if fn.isdirectory(dir) then
         M.Traits.shared_data_dir = dir
     end
 end
 for _, dir in ipairs {
-    PlatformDirs { appname = "ibus", version = "rime" }:user_config_dir(),
-    PlatformDirs { appname = "fcitx5", version = "rime" }:user_data_dir(),
-    PlatformDirs { appname = "fcitx", version = "rime" }:user_config_dir(),
+    home .. "/.local/share/rime",
+    home .. "/.config/ibus/rime",
+    home .. "/.local/share/fcitx5/rime",
+    home .. "/.config/fcitx/rime",
 } do
     if fn.isdirectory(dir) then
         M.Traits.user_data_dir = dir

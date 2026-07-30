@@ -1,8 +1,8 @@
 ---Convert vim key name to rime key code and mask
 ---@diagnostic disable: undefined-global
 -- luacheck: ignore 111 113
-local fs = require 'vim.fs'
-local json = require 'vim.json'
+local fs = vim.fs
+local json = vim.json
 local Key = require 'ime.key'.Key
 
 local M = {

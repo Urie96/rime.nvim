@@ -2,20 +2,11 @@
   pkgs ? import <nixpkgs> { },
 }:
 
-with pkgs;
-mkShell {
+pkgs.mkShell {
   name = "rime.nvim";
-  buildInputs = [
+  buildInputs = with pkgs; [
     librime
-
     pkg-config
-    xmake
-
-    (luajit.withPackages (
-      p: with p; [
-        busted
-        ldoc
-      ]
-    ))
+    gnumake
   ];
 }

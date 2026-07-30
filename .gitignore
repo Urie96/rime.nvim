@@ -6,3 +6,6 @@ lua/rime/version.lua
 build/
 .cache/
 .xmake/
+
+/rime.nobj.o
+*.so
