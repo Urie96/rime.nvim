@@ -101,9 +101,9 @@ function M.Rime:exe(input)
         end
     end
 
-    local text, lines, col = self:process(input)
+    local text, lines, col, highlights = self:process(input)
     M.feed_keys(text)
-    self.win:update(lines, col)
+    self.win:update(lines, col, highlights)
     self.keymap:set_special(self.win:has_preedit() and self.callback or nil, self)
     -- change input schema
     if text == "" then
