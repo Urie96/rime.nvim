@@ -32,7 +32,7 @@ else
     echo "-L/usr/local/lib -lrime")
 endif
 
-CFLAGS ?= -O3 -Wno-int-conversion
+CFLAGS ?= -O3 -Wno-int-conversion -fPIC
 
 # 平台相关的链接参数：
 #   macOS: -bundle -undefined dynamic_lookup（clang 构建 Lua 模块）
