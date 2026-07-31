@@ -1387,7 +1387,7 @@ typedef RimeSessionId Session;
 
 
 /* method: get_schema_list */
-static int rime__get_schema_list__func(lua_State *L) {
+static int rimeshim__get_schema_list__func(lua_State *L) {
           RimeSchemaList schema_list;
           if (!api->get_schema_list(&schema_list)) {
             fputs("cannot get schema list", stderr);
@@ -1403,6 +1403,33 @@ static int rime__get_schema_list__func(lua_State *L) {
             lua_rawseti(L, -2, i + 1);
           }
         
+  return 1;
+}
+
+/* method: start_maintenance */
+static int rimeshim__start_maintenance__func(lua_State *L) {
+  bool full_check_idx1;
+  bool result_idx1 = 0;
+  full_check_idx1 = lua_toboolean(L,1);
+          result_idx1 = api->start_maintenance(full_check_idx1);
+        
+  lua_pushboolean(L, result_idx1);
+  return 1;
+}
+
+/* method: join_maintenance_thread */
+static int rimeshim__join_maintenance_thread__func(lua_State *L) {
+          api->join_maintenance_thread();
+        
+  return 0;
+}
+
+/* method: is_maintenance_mode */
+static int rimeshim__is_maintenance_mode__func(lua_State *L) {
+  bool result_idx1 = 0;
+          result_idx1 = api->is_maintenance_mode();
+        
+  lua_pushboolean(L, result_idx1);
   return 1;
 }
 
@@ -1696,12 +1723,15 @@ static const reg_impl obj_Session_implements[] = {
   {NULL, NULL}
 };
 
-static const luaL_Reg rime_function[] = {
-  {"get_schema_list", rime__get_schema_list__func},
+static const luaL_Reg rimeshim_function[] = {
+  {"get_schema_list", rimeshim__get_schema_list__func},
+  {"start_maintenance", rimeshim__start_maintenance__func},
+  {"join_maintenance_thread", rimeshim__join_maintenance_thread__func},
+  {"is_maintenance_mode", rimeshim__is_maintenance_mode__func},
   {NULL, NULL}
 };
 
-static const obj_const rime_constants[] = {
+static const obj_const rimeshim_constants[] = {
   {NULL, NULL, 0.0 , 0}
 };
 
@@ -1718,7 +1748,7 @@ static const reg_sub_module reg_sub_modules[] = {
 
 
 #if LUAJIT_FFI
-static const ffi_export_symbol rime_ffi_export[] = {
+static const ffi_export_symbol rimeshim_ffi_export[] = {
   {NULL, { NULL } }
 };
 #endif
@@ -1771,14 +1801,14 @@ LUA_NOBJ_API int luaopen_rimeshim(lua_State *L) {
 
 	/* module table. */
 #if REG_MODULES_AS_GLOBALS
-	luaL_register(L, "rime", rime_function);
+	luaL_register(L, "rimeshim", rimeshim_function);
 #else
 	lua_newtable(L);
-	nobj_setfuncs(L, rime_function, 0);
+	nobj_setfuncs(L, rimeshim_function, 0);
 #endif
 
 	/* register module constants. */
-	obj_type_register_constants(L, rime_constants, -1, 0);
+	obj_type_register_constants(L, rimeshim_constants, -1, 0);
 
 	for(; submodules->func != NULL ; submodules++) {
 		lua_pushcfunction(L, submodules->func);
@@ -1800,8 +1830,8 @@ LUA_NOBJ_API int luaopen_rimeshim(lua_State *L) {
 
 #if LUAJIT_FFI
 	if(nobj_check_ffi_support(L)) {
-		nobj_try_loading_ffi(L, "rime.nobj.ffi.lua", rime_ffi_lua_code,
-			rime_ffi_export, priv_table);
+		nobj_try_loading_ffi(L, "rimeshim.nobj.ffi.lua", rimeshim_ffi_lua_code,
+			rimeshim_ffi_export, priv_table);
 	}
 #endif
 

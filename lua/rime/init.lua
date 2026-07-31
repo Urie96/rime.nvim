@@ -10,7 +10,7 @@ local M = {}
 local plugin_root = vim.api.nvim_get_runtime_file('lua/rime/init.lua', false)[1]:match('(.+)/lua/rime/init%.lua')
 
 ---Initialize rime with user config.
----@param opts { shared_data_dir: string, user_data_dir: string }
+---@param opts { shared_data_dir: string, user_data_dir?: string, log_dir?: string }
 function M.setup(opts)
   Session.init(opts)
 
@@ -22,6 +22,17 @@ function M.setup(opts)
       vim.notify('rime shim built successfully', 'info')
     end
   end, { desc = 'Build rimeshim.so' })
+
+  vim.api.nvim_create_user_command('RimeDeploy', function(e)
+    local t = vim.uv.hrtime()
+    vim.notify 'Deploying Rime data…'
+    local ok = Session.deploy(e.bang)
+    if ok then
+      vim.notify(string.format('Rime deploy finished in %.1fs', (vim.uv.hrtime() - t) / 1e9), 'info')
+    else
+      vim.notify('Rime deploy failed', 'error')
+    end
+  end, { bang = true, desc = 'Deploy rime data' })
 
   local augroup_id = vim.api.nvim_create_augroup('rime', {})
   -- 每次插入模式下输入一个字符前触发，把字符交给 Rime 处理

@@ -28,6 +28,24 @@ c_module "rimeshim" {
           }
         ]]
     },
+    c_function "start_maintenance" {
+        var_in { "bool", "full_check" },
+        var_out { "bool", "result" },
+        c_source [[
+          ${result} = api->start_maintenance(${full_check});
+        ]]
+    },
+    c_function "join_maintenance_thread" {
+        c_source [[
+          api->join_maintenance_thread();
+        ]]
+    },
+    c_function "is_maintenance_mode" {
+        var_out { "bool", "result" },
+        c_source [[
+          ${result} = api->is_maintenance_mode();
+        ]]
+    },
     subfiles {
         "src/traits.nobj.lua",
         "src/session.nobj.lua",

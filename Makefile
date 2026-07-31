@@ -52,7 +52,10 @@ lua/rimeshim.so: rime.nobj.c
 	$(CC) -c $(CFLAGS) $(LUAJIT_CFLAGS) $(LIBRIME_CFLAGS) -o rime.nobj.o rime.nobj.c
 	$(CXX) -o lua/rimeshim.so rime.nobj.o $(LIBRIME_LIBS) $(LUA_MODULE_LDFLAGS)
 
+build_nobj:
+	native_objects -outpath . -gen lua rime.nobj.lua
+
 clean:
 	rm -f rime.nobj.o lua/rimeshim.so
 
-.PHONY: all clean fix_rpath
+.PHONY: all clean build_nobj
