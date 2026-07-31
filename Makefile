@@ -34,6 +34,15 @@ endif
 
 CFLAGS ?= -O3 -Wno-int-conversion
 
+# 平台相关的链接参数：
+#   macOS: -bundle -undefined dynamic_lookup（clang 构建 Lua 模块）
+#   Linux: -shared（gcc/g++ 构建共享库，未定义符号默认允许、运行时解析）
+ifeq ($(shell uname), Darwin)
+  LUA_MODULE_LDFLAGS := -bundle -undefined dynamic_lookup
+else
+  LUA_MODULE_LDFLAGS := -shared
+endif
+
 # .c 依赖所有 .nobj.lua（rime.nobj.lua 通过 subfiles 引用 src/*.nobj.lua）
 NOBJ_DEPS := rime.nobj.lua src/traits.nobj.lua src/session.nobj.lua
 
@@ -41,7 +50,7 @@ all: lua/rimeshim.so
 
 lua/rimeshim.so: rime.nobj.c
 	$(CC) -c $(CFLAGS) $(LUAJIT_CFLAGS) $(LIBRIME_CFLAGS) -o rime.nobj.o rime.nobj.c
-	$(CXX) -o lua/rimeshim.so rime.nobj.o $(LIBRIME_LIBS) -bundle -undefined dynamic_lookup
+	$(CXX) -o lua/rimeshim.so rime.nobj.o $(LIBRIME_LIBS) $(LUA_MODULE_LDFLAGS)
 
 clean:
 	rm -f rime.nobj.o lua/rimeshim.so
