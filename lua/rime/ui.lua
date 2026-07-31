@@ -1,32 +1,13 @@
----Provide a horizontal UI.
----NOTE: `ui:draw()`'s output is `win:update()`'s input
----@module rime.horizontal
+---@module rime.ui
 local M = {
-  --- config for IME UI
-  UI = {
-    cursor = '|', -- symbol for cursor
-    indices = { '1', '2', '3', '4', '5', '6', '7', '8', '9', '0' }, -- simple digits
-  },
+  cursor = '|', -- symbol for cursor
+  indices = { '1', '2', '3', '4', '5', '6', '7', '8', '9', '0' }, -- simple digits
 }
-
----@param ui table?
----@return table ui
-function M.UI:new(ui)
-  ui = ui or {}
-  setmetatable(ui, {
-    __index = self,
-  })
-  return ui
-end
-
-setmetatable(M.UI, {
-  __call = M.UI.new,
-})
 
 ---draw UI
 ---@param context table
 ---@return string[], integer, table
-function M.UI:draw(context)
+function M:draw(context)
   local preedit = context.composition.preedit or ''
   preedit = preedit:sub(1, context.composition.cursor_pos)
     .. self.cursor

@@ -1,110 +1,54 @@
----config for keys.
----@module rime.keymap
----@diagnostic disable: undefined-global
--- luacheck: ignore 112 113
-local nowait = { "!", "<Bar>", "}", "~" }
--- "
-for i = 0x23, 0x26 do
-    local key = string.char(i)
-    table.insert(nowait, key)
-end
--- '()
-for i = 0x2a, 0x7b do
-    local key = string.char(i)
-    table.insert(nowait, key)
-end
-local special = { "<Space>", "<S-Esc>", "<S-Tab>", "<BS>", "<M-BS>", "<C-Space>", "<M-C-Space>", "<M-Bar>" }
-for _, name in ipairs { "Insert", "CR", "Del", "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown" } do
-    for _, s_name in ipairs { name, "S-" .. name } do
-        for _, c_s_name in ipairs { s_name, "C-" .. s_name } do
-            for _, keyname in ipairs { c_s_name, "M-" .. c_s_name } do
-                table.insert(special, "<" .. keyname .. ">")
-            end
-        end
+local special = { '<Space>', '<S-Esc>', '<S-Tab>', '<BS>', '<M-BS>', '<C-Space>', '<M-C-Space>', '<M-Bar>' }
+for _, name in ipairs { 'Insert', 'CR', 'Del', 'Up', 'Down', 'Left', 'Right', 'Home', 'End', 'PageUp', 'PageDown' } do
+  for _, s_name in ipairs { name, 'S-' .. name } do
+    for _, c_s_name in ipairs { s_name, 'C-' .. s_name } do
+      for _, keyname in ipairs { c_s_name, 'M-' .. c_s_name } do
+        table.insert(special, '<' .. keyname .. '>')
+      end
     end
+  end
 end
 for i = 1, 35 do
-    table.insert(special, "<F" .. i .. ">")
+  table.insert(special, '<F' .. i .. '>')
 end
 for i = 0x41, 0x5a do
-    local keyname = string.char(i)
-    for _, lhs in ipairs({ "<C-" .. keyname .. ">", "<M-C-" .. keyname .. ">" }) do
-        table.insert(special, lhs)
-    end
+  local keyname = string.char(i)
+  for _, lhs in ipairs { '<C-' .. keyname .. '>', '<M-C-' .. keyname .. '>' } do
+    table.insert(special, lhs)
+  end
 end
-table.insert(special, "<M-C-[>")
+table.insert(special, '<M-C-[>')
 for i = 0x5c, 0x5f do
-    local keyname = string.char(i)
-    for _, lhs in ipairs { "<C-" .. keyname .. ">", "<M-C-" .. keyname .. ">" } do
-        table.insert(special, lhs)
-    end
+  local keyname = string.char(i)
+  for _, lhs in ipairs { '<C-' .. keyname .. '>', '<M-C-' .. keyname .. '>' } do
+    table.insert(special, lhs)
+  end
 end
 for i = 0x21, 0x7b do
-    table.insert(special, "<M-" .. string.char(i) .. ">")
+  table.insert(special, '<M-' .. string.char(i) .. '>')
 end
 -- <M-Bar>
 for i = 0x7d, 0x7e do
-    table.insert(special, "<M-" .. string.char(i) .. ">")
+  table.insert(special, '<M-' .. string.char(i) .. '>')
 end
 
 local M = {
-    Keymap = {
-        --- config for neovim keymaps
-        keys = {
-            nowait = nowait, -- keys which map <nowait>, see `help <nowait>`
-            special = special, -- keys which only be mapped when IME window is opened
-            disable = { -- keys which will disable IME. It is useful when you input CJKV/ASCII mixedly
-                "<Space>"
-            },
-        },
-    }
+  keys = {
+    special = special,
+    disable = { '<Space>' },
+  },
 }
 
----set or delete keymap
----@param lhs string
----@param callback string | function?
----@param ... any pass `self` to `callback`
-function M.set(lhs, callback, ...)
-    if not callback then
-        -- ignore E31 when call vim.keymap.del() again
-        pcall(vim.keymap.del, "i", lhs, { buffer = 0 })
-    elseif callback then
-        local rhs = callback
-        if type(callback) == "function" then
-            rhs = callback(..., lhs)
-        end
-        vim.keymap.set("i", lhs, rhs, { buffer = 0, noremap = true, nowait = true, })
-    end
-end
-
----@param keymap table?
----@return table keymap
-function M.Keymap:new(keymap)
-    keymap = keymap or {}
-    setmetatable(keymap, {
-        __index = self
-    })
-    return keymap
-end
-
-setmetatable(M.Keymap, {
-    __call = M.Keymap.new
-})
-
----set special keymaps
 ---@param callback function?
-function M.Keymap:set_special(callback, ...)
-    for _, lhs in ipairs(self.keys.special) do
-        M.set(lhs, callback, ...)
+function M.set_special(callback)
+  for _, lhs in ipairs(M.keys.special) do
+    if callback then
+      local rhs = callback(lhs)
+      vim.keymap.set('i', lhs, rhs, { buffer = 0, noremap = true, nowait = true })
+    else
+      pcall(vim.keymap.del, 'i', lhs, { buffer = 0 })
     end
-end
-
----set `<nowait>` keymaps
----@param is_enabled boolean
-function M.Keymap:set_nowait(is_enabled)
-    for _, lhs in ipairs(self.keys.nowait) do
-        M.set(lhs, is_enabled and lhs or nil)
-    end
+  end
 end
 
 return M
