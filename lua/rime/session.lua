@@ -1,7 +1,42 @@
 ---wrap `rime.Session()`
 local rimeshim = require 'rimeshim'
-local Key = require('rime.key')
 local M = {}
+
+---@class RimeSessionOptions
+---@field shared_data_dir string
+---@field user_data_dir? string
+---@field log_dir? string
+
+---@class RimeSchema
+---@field schema_id string
+---@field name string
+
+---@class RimeCommit
+---@field text string
+
+---@class RimeComposition
+---@field length integer
+---@field cursor_pos integer
+---@field sel_start integer
+---@field sel_end integer
+---@field preedit string
+
+---@class RimeCandidate
+---@field text string
+---@field comment? string
+
+---@class RimeMenu
+---@field page_size integer
+---@field page_no integer
+---@field is_last_page boolean
+---@field highlighted_candidate_index integer
+---@field num_candidates integer
+---@field candidates RimeCandidate[]
+---@field select_keys? string
+
+---@class RimeContext
+---@field composition RimeComposition
+---@field menu RimeMenu
 
 local _userdata
 
@@ -11,7 +46,7 @@ local config = {}
 local log_level = { INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 }
 
 ---Initialize rime session (only once).
----@param opts { shared_data_dir: string, user_data_dir?: string, log_dir?: string }
+---@param opts RimeSessionOptions
 function M.init(opts)
   if _userdata then return end
 
@@ -60,24 +95,35 @@ function M.deploy(force)
   return ok
 end
 
-function M.get_current_schema(...) return _userdata:get_current_schema(...) end
+---返回当前方案 ID；会话无效时返回 nil。
+---@return string?
+function M.get_current_schema() return _userdata:get_current_schema() end
 
-function M.select_schema(...) return _userdata:select_schema(...) end
-
+---将一个 X11 keysym 及修饰键掩码交给 librime 处理。
+---@param code integer
+---@param mask? integer
 ---@return boolean
-function M.process_key(...) return _userdata:process_key(...) end
+function M.process_key(code, mask) return _userdata:process_key(code, mask) end
 
-function M.get_context(...) return _userdata:get_context(...) end
+---获取当前输入上下文；会话无效时返回 nil。
+---@return RimeContext?
+function M.get_context() return _userdata:get_context() end
 
-function M.get_commit(...) return _userdata:get_commit(...) end
+---读取尚未取走的上屏文本；没有待取文本时返回 nil。
+---@return RimeCommit?
+function M.get_commit() return _userdata:get_commit() end
 
+---提交当前正在编辑的 composition。
 ---@return boolean
-function M.commit_composition(...) return _userdata:commit_composition(...) end
+function M.commit_composition() return _userdata:commit_composition() end
 
-function M.clear_composition(...) return _userdata:clear_composition(...) end
+---清除当前 composition。
+function M.clear_composition() return _userdata:clear_composition() end
 
+---@type fun(): RimeSchema[]?
 M.get_schema_list = rimeshim.get_schema_list
 
+---返回当前方案的显示名称。
 ---@return string
 function M.get_schema_name()
   local schemas = M.get_schema_list()
@@ -88,6 +134,7 @@ function M.get_schema_name()
   return ''
 end
 
+---提交当前 composition 并返回上屏文本。
 ---@return string
 function M.get_commit_text()
   local text = ''
@@ -96,41 +143,6 @@ function M.get_commit_text()
     if commit then text = commit.text end
   end
   return text
-end
-
----@param name string
----@return boolean
-function M.parse_key(name)
-  local key = Key.new { name = name }
-  return M.process_key(key.code, key.mask)
-end
-
----@param input string
----@return table
-function M.get_full_context(input)
-  for name in input:gmatch '(.)' do
-    if M.parse_key(name) == false then break end
-  end
-  local result = M.get_context()
-  local context = result
-  while not context.menu.is_last_page do
-    M.parse_key '='
-    context = M.get_context()
-    result.menu.num_candidates = result.menu.num_candidates + context.menu.num_candidates
-    if result.menu.select_keys and context.menu.select_keys then
-      for _, key in ipairs(context.menu.select_keys) do
-        table.insert(result.menu.select_keys, key)
-      end
-    end
-    if result.menu.candidates and context.menu.candidates then
-      for _, candidate in ipairs(context.menu.candidates) do
-        table.insert(result.menu.candidates, candidate)
-      end
-    end
-  end
-  M.clear_composition()
-  result.menu.is_last_page = true
-  return result
 end
 
 return M
