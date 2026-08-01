@@ -1,40 +1,42 @@
 # rime.nvim
 
 在 Neovim 中直接使用 [Rime](https://github.com/rime/librime) 输入法引擎的中文输入插件，无需系统输入法。
-通过 C 绑定（`rimeshim.so`）调用 librime，在插入模式下拦截按键，用浮窗显示拼音与候选词。
+librime 运行在独立的 Rust 守护进程（`rime-daemon`）中，Neovim 通过 unix socket 与之通信：
+**每个 Neovim 实例一个连接 = 一个 librime session**，多个实例共享同一引擎与用户词典。
 
 ## 特性
 
-- 直接内嵌 librime 引擎，不依赖 fcitx/ibus 等系统输入法框架
+- librime 常驻独立进程（`rime-daemon`，Rust 实现），不依赖 fcitx/ibus 等系统输入法框架
+- 多个 Neovim 实例共享同一个引擎与用户词典（LevelDB userdb 单进程打开，无锁冲突）
 - 输入过程中浮窗显示 preedit（拼音串）与候选词
 - 首次使用自动部署词库（编译 `.table.bin` / `.prism.bin`），之后增量更新
 - 每个 buffer 独立记忆输入法开关状态（基于 `iminsert`）
 - 支持候选高亮、翻页、`<Space>` 上屏 / 关闭
+- daemon 懒启动：第一个实例自动拉起，最后一个实例退出后自动关闭
 
 ## 依赖
 
 | 依赖                    | 说明                                                       |
 | ----------------------- | ---------------------------------------------------------- |
 | Neovim ≥ 0.11           | 使用 `vim.pack.add`、`vim.system`、`vim.uv`                |
-| librime（含开发头文件） | 需要 `pkg-config --cflags rime` 可用，或指定 `LIBRIME_DIR` |
-| C/C++ 编译器            | 编译 `rimeshim.so`                                         |
+| Rust toolchain          | 编译 `rime-daemon`（cargo + rustc）                        |
+| librime（含开发头文件） | `rime-daemon` 链接 librime，可用 `RIME_LIB_DIR` 指定路径   |
 | Rime 配置               | 至少一份 `default.yaml` + 方案文件（如 rime_ice）          |
-
-LuaJIT 头文件已随仓库打包在 `include/`，无需单独安装。
 
 ## 安装
 
-### 1. 编译 C 绑定
+### 1. 编译 rime-daemon
 
-插件根目录执行（有 `nix-build` 时走 Nix derivation，否则走 Makefile）：
+插件根目录执行（有 `nix-build` 时走 Nix derivation，否则用 cargo）：
 
 ```bash
 ./build.sh
 # 或手动：
-# make LIBRIME_DIR=/opt/homebrew/opt/librime   # macOS Homebrew 示例
+# RIME_LIB_DIR=/opt/homebrew/opt/librime/lib cargo build --release --workspace   # macOS Homebrew 示例
 ```
 
-产物为 `lua/rimeshim.so`。编译完成后需要重启 Neovim。
+产物为 `target/release/rime-daemon`（Nix 构建时会软链到 `bin/rime-daemon`）。
+编译完成后需要重启 Neovim。
 
 ### 2. 安装插件
 
@@ -43,7 +45,7 @@ LuaJIT 头文件已随仓库打包在 `include/`，无需单独安装。
 ```lua
 {
   'Urie96/rime.nvim',
-  build = './build.sh', -- 自动编译 rimeshim.so
+  build = './build.sh', -- 自动编译 rime-daemon（Rust）
   config = function()
     local rime = require 'rime'
     rime.setup {
@@ -116,16 +118,19 @@ rime.setup { ... }
 
 强制全量重建词库与方案（忽略增量检测）。
 
-### `:RimeBuildShim`
+### `:RimeBuildDaemon`
 
-重新编译 `rimeshim.so`（调用 `build.sh`）。更新了插件版本或更换 librime 后使用。
+重新编译 `rime-daemon`（在插件根目录执行 `cargo build --release --workspace`）。
+更新了插件版本或更换 librime 后使用。
 
 ## 常见问题
 
 - **开启输入法后打字仍是英文**：说明词库未部署，引擎回退到了内置空方案（schema 为 `.default`）。
   执行 `:RimeDeploy` 或检查 `user_data_dir` 是否可写、`build/` 是否生成。
   插件在 `setup` 时会自动部署一次，首次使用请耐心等待通知提示。
-- **更新插件后需要重新编译**：`lua/rimeshim.so` 是编译产物，更新插件版本后执行
-  `:RimeBuildShim`（或 lazy.nvim 的 `build` 钩子）重新编译。
+- **更新插件后需要重新编译**：`target/release/rime-daemon` 是编译产物，更新插件版本后执行
+  `:RimeBuildDaemon`（或 lazy.nvim 的 `build` 钩子）重新编译。
+- **daemon 相关调试**：日志在 `log_dir/rime-daemon.log`；`RIME_DAEMON_FOREGROUND=1` 可前台运行；
+  socket 文件默认在 `$XDG_RUNTIME_DIR/rime-daemon.sock`（可用 `RIME_SOCKET` 覆盖）。
 - **切换键在输入过程中失灵**：输入过程中插件会接管大部分特殊按键（数字选字、翻页等），
   但 `<C-x>` 已被明确排除在接管列表之外，始终保留给你绑定切换输入法。

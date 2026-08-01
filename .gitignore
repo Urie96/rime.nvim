@@ -9,5 +9,5 @@ build/
 
 result
 
-/rime.nobj.o
-*.so
+/target/
+/bin/

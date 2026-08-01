@@ -5,8 +5,8 @@ repo_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 cd "$repo_dir"
 
 # ---------------------------------------------------------------------------
-# Nix 可用 → 通过 derivation 构建，确保 lua/rimeshim.so 携带对 librime 的
-# store 引用，避免被 GC 回收。
+# Nix 可用 → 通过 derivation 构建 rime-daemon，产物软链到 bin/。
+# 否则直接用 cargo 构建（需要 librime，可用 RIME_LIB_DIR 指定路径）。
 # ---------------------------------------------------------------------------
 if command -v nix-build &>/dev/null; then
   echo "use nix-build"
@@ -14,7 +14,10 @@ if command -v nix-build &>/dev/null; then
 
   nix-build
 
-  ln -sf ../result/lua/rimeshim.so "$repo_dir/lua/rimeshim.so"
+  mkdir -p bin
+  ln -sf ../result/bin/rime-daemon "$repo_dir/bin/rime-daemon"
 else
-  exec make
+  cargo build --release --workspace
 fi
+
+echo "rime-daemon built. 重启 Neovim 后生效。"

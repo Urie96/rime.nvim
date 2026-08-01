@@ -2,31 +2,27 @@
   pkgs ? import <nixpkgs> { },
 }:
 
-pkgs.stdenv.mkDerivation {
+pkgs.rustPlatform.buildRustPackage {
   name = "rime.nvim";
 
-  # 只包含真正编译必需的源：
-  #   Makefile + rime.nobj.c + include/ (LuaJIT 头文件)
-  src = pkgs.lib.sourceByRegex ./. [
-    "^Makefile$"
-    "^rime\\.nobj\\.c$"
-    "^include(/.*)?$"          # include 目录自身及其下所有文件
-  ];
+  src = pkgs.lib.cleanSource ./.;
 
   nativeBuildInputs = [ pkgs.pkg-config ];
   buildInputs = [ pkgs.librime ];
 
-  buildPhase = ''
-    # rime.nobj.c 在 Makefile 里声明了 .nobj.lua 依赖，
-    # 但已提交的 rime.nobj.c 不需要重新生成。touch 空文件
-    # 让 make 能通过依赖检查，跳过重新生成步骤。
-    mkdir -p lua src
-    touch rime.nobj.lua src/traits.nobj.lua src/session.nobj.lua
-    make
+  # 告诉 rime-sys/build.rs 去 store 里找 librime
+  preBuild = ''
+    export RIME_LIB_DIR=${pkgs.librime}/lib
+    export RIME_INCLUDE_DIR=${pkgs.librime}/include
   '';
 
+  cargoLock.lockFile = ./Cargo.lock;
+
   installPhase = ''
-    mkdir -p $out/lua
-    cp lua/rimeshim.so $out/lua/rimeshim.so
+    runHook preInstall
+    mkdir -p $out/lua $out/bin
+    cp -r lua/* $out/lua/
+    cp target/release/rime-daemon $out/bin/rime-daemon
+    runHook postInstall
   '';
 }

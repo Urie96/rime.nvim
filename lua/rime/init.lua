@@ -14,14 +14,14 @@ local plugin_root = vim.api.nvim_get_runtime_file('lua/rime/init.lua', false)[1]
 function M.setup(opts)
   Session.init(opts)
 
-  vim.api.nvim_create_user_command('RimeBuildShim', function()
-    local res = vim.system({ plugin_root .. '/build.sh' }):wait()
+  vim.api.nvim_create_user_command('RimeBuildDaemon', function()
+    local res = vim.system({ 'cargo', 'build', '--release', '--workspace' }, { cwd = plugin_root }):wait()
     if res.code ~= 0 then
-      vim.notify('Failed to build rime shim: ' .. res.stderr, 'error')
+      vim.notify('Failed to build rime-daemon: ' .. res.stderr, 'error')
     else
-      vim.notify('rime shim built successfully', 'info')
+      vim.notify('rime-daemon built successfully', 'info')
     end
-  end, { desc = 'Build rimeshim.so' })
+  end, { desc = 'Build rime-daemon (Rust)' })
 
   vim.api.nvim_create_user_command('RimeDeploy', function(e)
     local t = vim.uv.hrtime()
@@ -78,7 +78,8 @@ function M.draw(keys)
     elseif code == 65364 then
       code = 65366
     end
-    -- 引擎返回 false 表示该键被 Rime 消费（如候选上屏），不再继续处理后续键
+    -- 引擎返回 true 表示该键被 Rime 消费（如拼音串/候选上屏），继续处理后续键；
+    -- 返回 false 表示未消费（如 Escape/回车），停止并把原始键交给编辑器
     if not Session.process_key(code, key.mask) then return tostring(key), {}, 0, {} end
   end
   local context = Session.get_context()

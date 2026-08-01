@@ -24,10 +24,14 @@ function M.has_preedit() return #M.lines > 1 end
 ---Open or close a window
 function M._update()
   if #M.lines == 0 then
-    if M.is_valid() then vim.api.nvim_win_close(M.win_id, false) end
+    if M.is_valid() then pcall(vim.api.nvim_win_close, M.win_id, false) end
     return
   end
-  vim.api.nvim_buf_set_lines(M.buf_id, 0, #M.lines, false, M.lines)
+  -- pcall 防御：若在 textlock（如 InsertCharPre）中意外触发，跳过本次更新
+  -- 而非抛出 E565 中断整个输入链。
+  if not pcall(vim.api.nvim_buf_set_lines, M.buf_id, 0, #M.lines, false, M.lines) then
+    return
+  end
 
   -- Apply highlights
   vim.api.nvim_buf_clear_namespace(M.buf_id, M.ns_id, 0, -1)
@@ -47,9 +51,10 @@ function M._update()
   end
 
   if M.is_valid() then
-    vim.api.nvim_win_set_config(M.win_id, M.config)
+    pcall(vim.api.nvim_win_set_config, M.win_id, M.config)
   else
-    M.win_id = vim.api.nvim_open_win(M.buf_id, false, M.config)
+    local ok, win_id = pcall(vim.api.nvim_open_win, M.buf_id, false, M.config)
+    if ok then M.win_id = win_id end
   end
 end
 

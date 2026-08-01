@@ -70,28 +70,38 @@ function M.init(opts)
     log_level.FATAL
   )
   -- librime 的 RimeInitialize 只启动引擎，不会编译词库/prism；
-  -- 必须运行一次维护（部署）把 .table.bin/.prism.bin 编译到 user_data_dir/build，
-  -- 否则引擎回退到内置的空 schema（.default），所有按键按 ASCII 直通。
-  M.deploy()
+  -- daemon 启动时会自动部署，这里只需等待部署完成（首次使用较慢）。
+  M.wait_deployed()
   _userdata = rimeshim.Session()
 end
 
----运行 librime 维护，把词库/方案编译到 user_data_dir/build。
----首次（build 目录为空）执行全量部署，之后只增量重建变更部分。
----@param force boolean? true 时强制全量重建（:RimeDeploy!）
+---等待 daemon 完成启动时的自动部署。
+---首次使用（build/ 为空）时 daemon 会全量编译词库，需要一段时间；
+---daemon 常驻后再次连接时部署早已完成，此函数立即返回。
+---@return boolean 部署是否已完成
+function M.wait_deployed()
+  if not rimeshim.is_maintenance_mode() then return true end
+  vim.notify 'Rime: 首次使用，正在部署词库（仅需一次，请稍候）…'
+  local t = vim.uv.hrtime()
+  while rimeshim.is_maintenance_mode() do
+    if (vim.uv.hrtime() - t) / 1e9 > 300 then
+      vim.notify('Rime: 词库部署超时，请运行 :RimeDeploy 重试', 'error')
+      return false
+    end
+    vim.wait(200)
+  end
+  vim.notify('Rime: 词库部署完成', 'info')
+  return true
+end
+
+---运行 librime 维护（手动部署，:RimeDeploy / :RimeDeploy!）。
+---daemon 启动时已自动部署一次；此函数用于源文件变更后手动重建。
+---@param force boolean? true 时强制全量重建
 ---@return boolean 维护是否成功启动
 function M.deploy(force)
   if not config.user_data_dir then return false end
-  local build_dir = vim.fn.expand(config.user_data_dir) .. '/build'
-  local first_run = force or vim.fn.glob(build_dir .. '/*.bin', false) == ''
-  if first_run then
-    vim.notify 'Rime: 首次使用，正在部署词库（仅需一次，请稍候）…'
-  end
-  local ok = rimeshim.start_maintenance(first_run)
+  local ok = rimeshim.start_maintenance(force == true)
   rimeshim.join_maintenance_thread()
-  if first_run then
-    vim.notify(ok and 'Rime: 词库部署完成' or 'Rime: 词库部署失败，请运行 :RimeDeploy 重试', ok and 'info' or 'error')
-  end
   return ok
 end
 
