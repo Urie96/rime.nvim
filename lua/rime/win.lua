@@ -4,6 +4,8 @@ local function ensure_highlights()
   pcall(vim.api.nvim_set_hl, 0, 'RimeCandidate', {}) -- inherit Normal foreground
 end
 
+local candidate_zindex = 1000
+
 local M = {
   win_id = -1,
   buf_id = vim.api.nvim_create_buf(false, true),
@@ -76,6 +78,7 @@ function M.update(lines, col, highlights)
     width = width,
     row = 1,
     col = col or 0,
+    zindex = candidate_zindex,
   }
   vim.schedule(function() M._update() end)
 end

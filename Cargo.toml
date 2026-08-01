@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/rime-sys", "crates/rime-daemon"]
+members = ["crates/rime-sys", "crates/rime-daemon", "crates/rime-cli"]
 
 [workspace.package]
 version = "0.1.0"

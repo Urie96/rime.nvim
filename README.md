@@ -13,6 +13,8 @@ librime 运行在独立的 Rust 守护进程（`rime-daemon`）中，Neovim 通�
 - 每个 buffer 独立记忆输入法开关状态（基于 `iminsert`）
 - 支持候选高亮、翻页、`<Space>` 上屏 / 关闭
 - daemon 懒启动：第一个实例自动拉起，最后一个实例退出后自动关闭
+- 附带 Rust 编写的终端客户端 `rime-cli`（3 行界面：上屏文本 / preedit / 候选词），
+  启动时自动连接 daemon，与 Neovim 共享同一引擎
 
 ## 依赖
 
@@ -122,6 +124,76 @@ rime.setup { ... }
 
 重新编译 `rime-daemon`（在插件根目录执行 `cargo build --release --workspace`）。
 更新了插件版本或更换 librime 后使用。
+
+## 命令行客户端（rime-cli）
+
+仓库还附带一个 Rust 编写的终端客户端 `rime-cli`：启动时自动连接常驻的
+`rime-daemon`（未运行则自动拉起），在终端里直接使用同一套 Rime 引擎与用户词典
+（与 Neovim 实例共享）。它是**键盘 → stdout 的转发器**：stdout 是数据通道，
+可接入 tmux pane 等——rime 上屏的中文与未被 rime 消费的按键（字母、组合键、
+方向键、Esc、未识别序列）都实时写入 stdout，让目标 pane 像被直接键入一样响应。
+界面只有 2 行（画在 stderr）：
+
+```
+wo ai|　                                    ← 第 1 行：preedit（| 为光标）
+1. 我  2. 握  3. 沃 …                          ← 第 2 行：候选词
+```
+
+```bash
+# 编译（与 daemon 一起）：
+./build.sh            # 产物在 target/release/rime-cli（Nix 构建时软链到 bin/rime-cli）
+
+# 运行（stdout 接入 pane，如：
+#   tmux new-window 'rime-cli | 回放脚本'  # 或把 stdout 交给你的 pane 写入逻辑）
+target/release/rime-cli > 数据流
+```
+
+转发规则：
+
+| 事件 | stdout 输出 |
+| ---- | ----------- |
+| 候选/拼音上屏 | 上屏的中文文本 |
+| rime 未消费的按键 | 终端原始字节（如 `\x1b[A` 方向键、`\x03` Ctrl-C、`\r` 回车、`\x7f` 退格） |
+| 直接输入的非 ASCII 字符 | 原样字节 |
+| `Esc` | 交给 rime（若方案把 Esc 绑定为进入 ascii 模式，之后按键会直接透传转发） |
+| `Ctrl-\` | 退出（不转发） |
+
+### 免中间层：`--exec` 直接执行命令
+
+不想走 stdout 管道时，可用 `--exec` 指定一条命令模板（含 `{}` 占位符）：
+每次需要转发字符时，把 `{}` 替换为本次转发的字符（作为单独参数），直接执行，
+不再写 stdout。模板用 shlex（POSIX 分词）解析，支持 `'...'` / `"..."` 引号与
+反斜杠转义，但**不经 sh**——不支持变量展开/通配符/重定向（需要时可显式 `sh -c`）：
+
+```bash
+rime-cli --exec 'tmux send-keys -t %1 -l {}'
+# 等价于：每次转发时执行 tmux send-keys -t %1 -l 我
+```
+
+- 也可用环境变量 `RIME_EXEC` 指定（命令行参数优先）
+- `-h` / `--help` 查看帮助
+- 每次转发 spawn 一次命令（~ms 级），打字场景无感；占位符替换发生在分词之后，
+  因此负载含空格/引号也始终是一个参数
+
+常用按键（其余行为由 Rime 方案决定）：
+
+| 按键                      | 作用                                        |
+| ------------------------- | ------------------------------------------- |
+| `1` ~ `9`、`0`            | 选择候选词上屏                              |
+| `<Space>`                 | 有拼音串时上屏首选                          |
+| `<Up>` / `<Down>`         | 上一页 / 下一页（映射为 PageUp / PageDown） |
+| `<PageUp>` / `<PageDown>` | 翻页                                        |
+| `Ctrl-Space`              | 中英切换（由方案 key_binder 处理）          |
+
+环境变量（仅当 CLI 需要**自己拉起** daemon 时生效；已运行中的 daemon 直接复用）：
+
+| 变量                     | 说明                                                          |
+| ------------------------ | ------------------------------------------------------------- |
+| `RIME_SOCKET`            | unix socket 路径，默认 `$XDG_RUNTIME_DIR` 或 `~/.local/state/rime.nvim` |
+| `RIME_SHARED_DATA_DIR`   | 方案/词库目录，默认优先 `~/.config/rime`（存在时），否则 `~/.local/share/rime` |
+| `RIME_USER_DATA_DIR`     | 可写数据目录，默认 `~/.local/share/rime.nvim`                |
+| `RIME_LOG_DIR`           | 日志目录，默认 `~/.local/state/rime.nvim`                    |
+| `RIME_DAEMON_BIN`        | rime-daemon 可执行文件路径（默认找同目录或 PATH）            |
 
 ## 常见问题
 

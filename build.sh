@@ -16,6 +16,7 @@ if command -v nix-build &>/dev/null; then
 
   mkdir -p bin
   ln -sf ../result/bin/rime-daemon "$repo_dir/bin/rime-daemon"
+  ln -sf ../result/bin/rime-cli "$repo_dir/bin/rime-cli"
 else
   cargo build --release --workspace
 fi

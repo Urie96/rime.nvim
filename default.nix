@@ -23,6 +23,7 @@ pkgs.rustPlatform.buildRustPackage {
     mkdir -p $out/lua $out/bin
     cp -r lua/* $out/lua/
     cp target/release/rime-daemon $out/bin/rime-daemon
+    cp target/release/rime-cli $out/bin/rime-cli
     runHook postInstall
   '';
 }
