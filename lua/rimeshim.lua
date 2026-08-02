@@ -33,6 +33,8 @@ end
 
 local function socket_path()
   if state.traits and state.traits.socket then return state.traits.socket end
+  local env_socket = vim.env.RIME_SOCKET
+  if env_socket and env_socket ~= '' then return vim.fn.expand(env_socket) end
   local fallback = state.traits and state.traits.log_dir or vim.fn.expand('~/.local/state/rime.nvim')
   return vim.env.XDG_RUNTIME_DIR and (vim.env.XDG_RUNTIME_DIR .. '/rime-daemon.sock')
     or (fallback .. '/rime-daemon.sock')
@@ -40,9 +42,11 @@ end
 
 local function build_env()
   local env = vim.fn.environ()
-  env.RIME_SHARED_DATA_DIR = state.traits.shared_data_dir
-  env.RIME_USER_DATA_DIR = state.traits.user_data_dir
-  env.RIME_LOG_DIR = state.traits.log_dir
+  -- 目录配置只在 setup 显式给出（或从环境变量解析得到）时才覆盖，
+  -- 其余情况保留用户环境里的 RIME_*（vim.fn.environ() 已包含），由 daemon 兜底默认值。
+  if state.traits.shared_data_dir then env.RIME_SHARED_DATA_DIR = state.traits.shared_data_dir end
+  if state.traits.user_data_dir then env.RIME_USER_DATA_DIR = state.traits.user_data_dir end
+  if state.traits.log_dir then env.RIME_LOG_DIR = state.traits.log_dir end
   env.RIME_SOCKET = socket_path()
   env.RIME_MIN_LOG_LEVEL = tostring(state.traits.min_log_level or 3)
   local arr = {}

@@ -41,8 +41,8 @@ librime 运行在独立的 Rust 守护进程（`rime-daemon`）中，Neovim 通�
   config = function()
     local rime = require 'rime'
     rime.setup {
-      shared_data_dir = '~/.config/rime',          -- 方案/词库源文件（只读）
-      user_data_dir = '~/.local/share/rime.nvim',  -- 可写目录，部署产物 build/ 在此
+      shared_data_dir = '~/.config/rime',          -- 方案/词库源文件（只读，可省略）
+      user_data_dir = '~/.local/share/rime.nvim',  -- 可写目录，部署产物 build/ 在此（可省略）
     }
     -- 切换输入法的按键（按需自定义）
     vim.keymap.set('i', '<C-x>', function() rime.toggle() end, { desc = 'Toggle Rime' })
@@ -68,9 +68,13 @@ rime.setup { ... }
 
 | 参数              | 必填 | 说明                                                                                      |
 | ----------------- | ---- | ----------------------------------------------------------------------------------------- |
-| `shared_data_dir` | 是   | Rime 方案与词库源文件目录（如 `~/.config/rime`）                                          |
-| `user_data_dir`   | 否   | 可写目录，librime 的用户数据与部署产物 `build/` 存放于此，默认 `~/.local/share/rime.nvim` |
-| `log_dir`         | 否   | librime 日志目录，默认 `~/.local/state/rime.nvim`                                          |
+| `shared_data_dir` | 否   | Rime 方案与词库源文件目录；缺省时读 `RIME_SHARED_DATA_DIR` 环境变量，仍缺省则由 rime-daemon 按自身默认（`~/.config/rime`）查找 |
+| `user_data_dir`   | 否   | 可写目录，librime 的用户数据与部署产物 `build/` 存放于此；缺省时读 `RIME_USER_DATA_DIR`，再缺省为 `~/.local/share/rime.nvim` |
+| `log_dir`         | 否   | librime 日志目录；缺省时读 `RIME_LOG_DIR`，再缺省为 `~/.local/state/rime.nvim`              |
+
+> 目录配置优先级：**`setup` 参数 > 环境变量 > 默认值**。三个目录均可省略——不传 `setup` 参数、
+> 只在 shell 里设置 `RIME_SHARED_DATA_DIR` / `RIME_USER_DATA_DIR` / `RIME_LOG_DIR`（或
+> `RIME_SOCKET`）也能工作，环境变量会透传给 daemon。
 
 ### 可用 API
 

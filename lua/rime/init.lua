@@ -7,7 +7,7 @@ local Session = require 'rime.session'
 local M = {}
 
 ---Initialize rime with user config.
----@param opts { shared_data_dir: string, user_data_dir?: string, log_dir?: string }
+---@param opts { shared_data_dir?: string, user_data_dir?: string, log_dir?: string }
 function M.setup(opts)
   Session.init(opts)
 

@@ -3,9 +3,9 @@ local rimeshim = require 'rimeshim'
 local M = {}
 
 ---@class RimeSessionOptions
----@field shared_data_dir string
----@field user_data_dir? string
----@field log_dir? string
+---@field shared_data_dir? string 方案/词库目录（缺省读 RIME_SHARED_DATA_DIR，仍缺省则由 daemon 按自身默认查找）
+---@field user_data_dir? string 可写数据目录（缺省读 RIME_USER_DATA_DIR，再缺省 ~/.local/share/rime.nvim）
+---@field log_dir? string 日志目录（缺省读 RIME_LOG_DIR，再缺省 ~/.local/state/rime.nvim）
 
 ---@class RimeSchema
 ---@field schema_id string
@@ -40,9 +40,6 @@ local M = {}
 
 local _userdata
 
--- 保存用户 setup 时传入的配置
-local config = {}
-
 local log_level = { INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 }
 
 ---Initialize rime session (only once).
@@ -50,17 +47,20 @@ local log_level = { INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 }
 function M.init(opts)
   if _userdata then return end
 
+  -- 目录配置：setup 参数优先，其次环境变量（RIME_*），最后默认值。
+  -- shared_data_dir 缺省时不强制指定，交由 rime-daemon 按自身默认（如 ~/.config/rime）查找。
+  local shared_data_dir = opts.shared_data_dir or vim.env.RIME_SHARED_DATA_DIR
+  local user_data_dir = opts.user_data_dir or vim.env.RIME_USER_DATA_DIR or '~/.local/share/rime.nvim'
+  local log_dir = opts.log_dir or vim.env.RIME_LOG_DIR or '~/.local/state/rime.nvim'
+
   -- 先创建目录再初始化 librime：否则 glog 无法写日志、部署也无法写 build/，会静默失败
-  local log_dir = vim.fn.expand(opts.log_dir or '~/.local/state/rime.nvim')
-  local user_data_dir = vim.fn.expand(opts.user_data_dir or '~/.local/share/rime.nvim')
+  log_dir = vim.fn.expand(log_dir)
+  user_data_dir = vim.fn.expand(user_data_dir)
   vim.fn.mkdir(log_dir, 'p')
   vim.fn.mkdir(user_data_dir, 'p')
-  config.shared_data_dir = opts.shared_data_dir
-  config.user_data_dir = opts.user_data_dir or '~/.local/share/rime.nvim'
-  config.log_dir = opts.log_dir or '~/.local/state/rime.nvim'
 
   rimeshim.Traits(
-    vim.fn.expand(opts.shared_data_dir),
+    shared_data_dir and vim.fn.expand(shared_data_dir),
     user_data_dir,
     log_dir,
     'Rime',
@@ -99,7 +99,6 @@ end
 ---@param force boolean? true 时强制全量重建
 ---@return boolean 维护是否成功启动
 function M.deploy(force)
-  if not config.user_data_dir then return false end
   local ok = rimeshim.start_maintenance(force == true)
   rimeshim.join_maintenance_thread()
   return ok
