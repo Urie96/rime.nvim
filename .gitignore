@@ -1,13 +1,4 @@
 _readthedocs/
-compile_commands.json
 
 lua/rime/version.lua
 /output/
-build/
-.cache/
-.xmake/
-
-result
-
-/target/
-/bin/

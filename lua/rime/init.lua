@@ -6,22 +6,10 @@ local UI = require 'rime.ui'
 local Session = require 'rime.session'
 local M = {}
 
--- resolve plugin root from this module's own location
-local plugin_root = vim.api.nvim_get_runtime_file('lua/rime/init.lua', false)[1]:match('(.+)/lua/rime/init%.lua')
-
 ---Initialize rime with user config.
 ---@param opts { shared_data_dir: string, user_data_dir?: string, log_dir?: string }
 function M.setup(opts)
   Session.init(opts)
-
-  vim.api.nvim_create_user_command('RimeBuildDaemon', function()
-    local res = vim.system({ 'cargo', 'build', '--release', '--workspace' }, { cwd = plugin_root }):wait()
-    if res.code ~= 0 then
-      vim.notify('Failed to build rime-daemon: ' .. res.stderr, 'error')
-    else
-      vim.notify('rime-daemon built successfully', 'info')
-    end
-  end, { desc = 'Build rime-daemon (Rust)' })
 
   vim.api.nvim_create_user_command('RimeDeploy', function(e)
     local t = vim.uv.hrtime()

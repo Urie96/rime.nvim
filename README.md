@@ -21,24 +21,15 @@ librime 运行在独立的 Rust 守护进程（`rime-daemon`）中，Neovim 通�
 | 依赖                    | 说明                                                       |
 | ----------------------- | ---------------------------------------------------------- |
 | Neovim ≥ 0.11           | 使用 `vim.pack.add`、`vim.system`、`vim.uv`                |
-| Rust toolchain          | 编译 `rime-daemon`（cargo + rustc）                        |
-| librime（含开发头文件） | `rime-daemon` 链接 librime，可用 `RIME_LIB_DIR` 指定路径   |
+| librime                 | `rime-daemon` 的运行时依赖（daemon 在独立仓库编译安装）    |
 | Rime 配置               | 至少一份 `default.yaml` + 方案文件（如 rime_ice）          |
 
 ## 安装
 
-### 1. 编译 rime-daemon
+### 1. 安装 rime-daemon
 
-插件根目录执行（有 `nix-build` 时走 Nix derivation，否则用 cargo）：
-
-```bash
-./build.sh
-# 或手动：
-# RIME_LIB_DIR=/opt/homebrew/opt/librime/lib cargo build --release --workspace   # macOS Homebrew 示例
-```
-
-产物为 `target/release/rime-daemon`（Nix 构建时会软链到 `bin/rime-daemon`）。
-编译完成后需要重启 Neovim。
+`rime-daemon`（含 `rime-cli`）在独立仓库编译发布，**本插件不再负责编译**。
+编译安装后把 `rime-daemon` 加入 `PATH`，或用 `RIME_DAEMON_BIN` 环境变量指定可执行文件路径。
 
 ### 2. 安装插件
 
@@ -47,7 +38,6 @@ librime 运行在独立的 Rust 守护进程（`rime-daemon`）中，Neovim 通�
 ```lua
 {
   'Urie96/rime.nvim',
-  build = './build.sh', -- 自动编译 rime-daemon（Rust）
   config = function()
     local rime = require 'rime'
     rime.setup {
@@ -120,11 +110,6 @@ rime.setup { ... }
 
 强制全量重建词库与方案（忽略增量检测）。
 
-### `:RimeBuildDaemon`
-
-重新编译 `rime-daemon`（在插件根目录执行 `cargo build --release --workspace`）。
-更新了插件版本或更换 librime 后使用。
-
 ## 命令行客户端（rime-cli）
 
 仓库还附带一个 Rust 编写的终端客户端 `rime-cli`：启动时自动连接常驻的
@@ -140,12 +125,9 @@ wo ai|　                                    ← 第 1 行：preedit（| 为光�
 ```
 
 ```bash
-# 编译（与 daemon 一起）：
-./build.sh            # 产物在 target/release/rime-cli（Nix 构建时软链到 bin/rime-cli）
-
 # 运行（stdout 接入 pane，如：
 #   tmux new-window 'rime-cli | 回放脚本'  # 或把 stdout 交给你的 pane 写入逻辑）
-target/release/rime-cli > 数据流
+rime-cli > 数据流
 ```
 
 转发规则：
@@ -193,15 +175,15 @@ rime-cli --exec 'tmux send-keys -t %1 -l {}'
 | `RIME_SHARED_DATA_DIR`   | 方案/词库目录，默认优先 `~/.config/rime`（存在时），否则 `~/.local/share/rime` |
 | `RIME_USER_DATA_DIR`     | 可写数据目录，默认 `~/.local/share/rime.nvim`                |
 | `RIME_LOG_DIR`           | 日志目录，默认 `~/.local/state/rime.nvim`                    |
-| `RIME_DAEMON_BIN`        | rime-daemon 可执行文件路径（默认找同目录或 PATH）            |
+| `RIME_DAEMON_BIN`        | rime-daemon 可执行文件路径（默认从 PATH 查找）              |
 
 ## 常见问题
 
 - **开启输入法后打字仍是英文**：说明词库未部署，引擎回退到了内置空方案（schema 为 `.default`）。
   执行 `:RimeDeploy` 或检查 `user_data_dir` 是否可写、`build/` 是否生成。
   插件在 `setup` 时会自动部署一次，首次使用请耐心等待通知提示。
-- **更新插件后需要重新编译**：`target/release/rime-daemon` 是编译产物，更新插件版本后执行
-  `:RimeBuildDaemon`（或 lazy.nvim 的 `build` 钩子）重新编译。
+- **未找到 rime-daemon**：`rime-daemon` 需自行编译安装（见「安装」），
+  可用 `RIME_DAEMON_BIN` 指定可执行文件路径，或将其加入 `PATH`。
 - **daemon 相关调试**：日志在 `log_dir/rime-daemon.log`；`RIME_DAEMON_FOREGROUND=1` 可前台运行；
   socket 文件默认在 `$XDG_RUNTIME_DIR/rime-daemon.sock`（可用 `RIME_SOCKET` 覆盖）。
 - **切换键在输入过程中失灵**：输入过程中插件会接管大部分特殊按键（数字选字、翻页等），

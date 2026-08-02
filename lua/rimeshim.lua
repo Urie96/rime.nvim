@@ -21,23 +21,13 @@ local state = {
 local SESSION_TIMEOUT_MS = 2000
 local DEPLOY_TIMEOUT_MS = 300000 -- 首次部署可能较慢
 
-local function plugin_root()
-  local p = vim.api.nvim_get_runtime_file('lua/rimeshim.lua', false)[1]
-  return p and p:match('(.+)/lua/rimeshim%.lua') or nil
-end
-
+-- daemon 在独立仓库编译安装，本插件不负责编译：
+-- 优先 RIME_DAEMON_BIN，否则从 PATH 查找。
 local function daemon_bin()
   local env = vim.env.RIME_DAEMON_BIN
   if env and vim.fn.filereadable(env) == 1 then return env end
-  local root = plugin_root()
-  if not root then return nil end
-  for _, p in ipairs {
-    root .. '/target/release/rime-daemon',
-    root .. '/target/debug/rime-daemon',
-    root .. '/bin/rime-daemon',
-  } do
-    if vim.fn.filereadable(p) == 1 then return p end
-  end
+  local p = vim.fn.exepath('rime-daemon')
+  if p ~= '' and vim.fn.filereadable(p) == 1 then return p end
   return nil
 end
 
@@ -65,7 +55,7 @@ end
 local function spawn_daemon()
   local bin = daemon_bin()
   if not bin then
-    vim.notify('rime.nvim: 未找到 rime-daemon，请先运行 :RimeBuildDaemon', 'error')
+    vim.notify('rime.nvim: 未找到 rime-daemon，请先编译安装（见 README，可用 RIME_DAEMON_BIN 指定路径）', 'error')
     return false
   end
   local pid, err = vim.uv.spawn(bin, {
