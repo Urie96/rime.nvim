@@ -32,23 +32,39 @@ use serde_json::json;
 enum Sink {
     /// 直接写入 stdout（默认）。
     Stdout,
-    /// 每次转发直接执行解析后的命令（不经 sh）；`{}` 替换为本次负载。
+    /// 每次转发直接执行解析后的命令（不经 sh）。模板支持两个占位符：
+    /// `{}` = 字面负载（上屏文本/原始字节）；`{key}` = tmux 键名
+    /// （如 `C-d`、`Up`、`Enter`），由 tmux 按目标 pane 的键盘协议编码——
+    /// 对启用了 kitty keyboard protocol 的程序（fish 4 / nvim 等）必需。
     Exec(Vec<String>),
 }
 
 impl Sink {
-    fn forward(&self, payload: &[u8]) {
+    /// `key`：None = 文本事件（上屏文本），Some = 按键事件（透传按键）。
+    fn forward(&self, key: Option<&term::Key>, text: &str) {
         match self {
             Sink::Stdout => {
                 let mut out = std::io::stdout().lock();
-                let _ = out.write_all(payload);
+                let _ = out.write_all(text.as_bytes());
                 let _ = out.flush();
             }
             Sink::Exec(argv) => {
-                let text = String::from_utf8_lossy(payload);
                 let mut args: Vec<OsString> = Vec::with_capacity(argv.len());
                 for a in argv {
-                    args.push(OsString::from(a.replace("{}", &text)));
+                    let mut out = a.clone();
+                    if a.contains("{key}") {
+                        // 文本事件：字符键语义（tmux 逐字符发送）；按键事件：键名。
+                        // Raw 事件无法表达为键名 → 跳过本次转发。
+                        match key {
+                            None => out = out.replace("{key}", text),
+                            Some(k) => match tmux_key_name(k) {
+                                Some(name) => out = out.replace("{key}", &name),
+                                None => return,
+                            },
+                        }
+                    }
+                    out = out.replace("{}", text);
+                    args.push(OsString::from(out));
                 }
                 if let Some(prog) = args.first() {
                     if let Ok(mut child) = Command::new(prog).args(&args[1..]).spawn() {
@@ -60,6 +76,58 @@ impl Sink {
     }
 }
 
+/// 按键 → tmux 键名（tmux send-keys 无 `-l` 时按此解析，并按目标 pane 的
+/// 键盘协议编码发送，如 `C-d` → kitty 序列 `\x1b[27;4;100~`）。
+fn tmux_key_name(key: &term::Key) -> Option<String> {
+    match key {
+        term::Key::Char(c) => Some(match c {
+            ' ' => "Space".into(),
+            c => c.to_string(), // 含非 ASCII：tmux 按字符键发送
+        }),
+        term::Key::Code(code, mask) => {
+            let mut s = String::new();
+            if mask & term::MOD_CTRL != 0 {
+                s.push_str("C-");
+            }
+            if mask & term::MOD_ALT != 0 {
+                s.push_str("M-");
+            }
+            if mask & term::MOD_SHIFT != 0 {
+                s.push_str("S-");
+            }
+            let base = match *code {
+                0x20 => "Space".to_string(),
+                term::KEY_RETURN => "Enter".to_string(),
+                term::KEY_ESCAPE => "Escape".to_string(),
+                term::KEY_BACKSPACE => "Bspace".to_string(),
+                term::KEY_TAB => "Tab".to_string(),
+                term::KEY_DELETE => "Delete".to_string(),
+                term::KEY_INSERT => "Insert".to_string(),
+                term::KEY_HOME => "Home".to_string(),
+                term::KEY_END => "End".to_string(),
+                term::KEY_PAGE_UP => "PageUp".to_string(),
+                term::KEY_PAGE_DOWN => "PageDown".to_string(),
+                term::KEY_UP => "Up".to_string(),
+                term::KEY_DOWN => "Down".to_string(),
+                term::KEY_LEFT => "Left".to_string(),
+                term::KEY_RIGHT => "Right".to_string(),
+                c if (0x20..=0x7e).contains(&c) => {
+                    let ch = c as u8 as char;
+                    // Ctrl+字母统一小写（tmux 键名不区分大小写）
+                    if mask & term::MOD_CTRL != 0 {
+                        ch.to_ascii_lowercase().to_string()
+                    } else {
+                        ch.to_string()
+                    }
+                }
+                _ => return None,
+            };
+            Some(s + &base)
+        }
+        term::Key::Raw(_) | term::Key::Quit => None,
+    }
+}
+
 /// 极简 shell 风格分词：按空白切分，支持 `'...'` 与 `"..."` 引号、反斜杠
 /// 转义。不做变量展开/通配符/重定向——命令不经 sh，直接解析执行。
 fn print_usage() {
@@ -68,9 +136,10 @@ fn print_usage() {
     eprintln!("用法: rime-cli [--exec <命令模板>]");
     eprintln!();
     eprintln!("  --exec <模板>   每次转发直接执行解析后的命令（不经 sh，不再写 stdout）；");
-    eprintln!("                   模板中的 {{}} 被替换为本次转发的字符（作为一个参数）。");
-    eprintln!("                   支持 '...' / \"...\" 引号与反斜杠转义；");
-    eprintln!("                   不支持变量展开/通配符/重定向（需要时可在模板里显式 sh -c）。");
+    eprintln!("                   模板中 {{}} 替换为字面负载（上屏文本/原始字节），");
+    eprintln!("                   {{key}} 替换为 tmux 键名（如 C-d / Up / Enter），");
+    eprintln!("                   由 tmux 按目标 pane 的键盘协议编码（fish/nvim 必需）。");
+    eprintln!("                   例: rime-cli --exec 'tmux send-keys -t %1 {{key}}'");
     eprintln!("                   例: rime-cli --exec 'tmux send-keys -t %1 -l {{}}'");
     eprintln!("                   也可用环境变量 RIME_EXEC 指定");
     eprintln!("  -h, --help      显示本帮助");
@@ -177,22 +246,24 @@ fn main() {
 
 /// 处理一个按键：rime 消费则同步界面并转发上屏文本；否则按原始字节转发。
 fn handle_event(c: &mut Client, st: &mut ui::State, sink: &Sink, ev: term::KeyEvent) {
-    match ev.key {
+    // 透传按键的负载：原始字节（`{}` 占位符用），lossy 转文本。
+    let raw_text = String::from_utf8_lossy(&ev.raw);
+    match &ev.key {
         term::Key::Char(ch) if ch.is_ascii() => {
-            if c.process_key(ch as i32, 0).unwrap_or(false) {
+            if c.process_key(*ch as i32, 0).unwrap_or(false) {
                 forward_commit(c, st, sink);
             } else {
-                sink.forward(&ev.raw);
+                sink.forward(Some(&ev.key), &raw_text);
             }
         }
         term::Key::Char(_) => {
             // 非 ASCII（直接输入的中文/符号）：不经 rime，原样转发
-            sink.forward(&ev.raw);
+            sink.forward(Some(&ev.key), &raw_text);
         }
         term::Key::Code(code, mask) => {
             // ↑/↓ 映射为 PageUp/PageDown 翻候选页（与 rime.nvim 插件一致）；
             // 无候选时 rime 不会消费，仍会按原始字节（方向键）转发。
-            let (code, mask) = match (code, mask) {
+            let (code, mask) = match (*code, *mask) {
                 (term::KEY_UP, 0) => (term::KEY_PAGE_UP, 0),
                 (term::KEY_DOWN, 0) => (term::KEY_PAGE_DOWN, 0),
                 other => other,
@@ -205,22 +276,23 @@ fn handle_event(c: &mut Client, st: &mut ui::State, sink: &Sink, ev: term::KeyEv
                 let _ = c.commit_composition();
                 forward_commit(c, st, sink);
             } else {
-                sink.forward(&ev.raw);
+                sink.forward(Some(&ev.key), &raw_text);
             }
         }
         term::Key::Raw(_) => {
             // 未识别的序列（如 Ctrl+方向键）：不经 rime，原样转发
-            sink.forward(&ev.raw);
+            sink.forward(Some(&ev.key), &raw_text);
         }
         term::Key::Quit => {}
     }
 }
 
-/// 把本次新上屏的文本转发到目标（空文本不写）。
+/// 把本次新上屏的文本转发到目标（空文本不写）。文本事件：`{key}` 与 `{}`
+/// 都替换为上屏文本（tmux 无 `-l` 时会逐字符当作字符键发送）。
 fn forward_commit(c: &mut Client, st: &mut ui::State, sink: &Sink) {
     let text = st.refresh(c);
     if !text.is_empty() {
-        sink.forward(text.as_bytes());
+        sink.forward(None, &text);
     }
 }
 
@@ -288,5 +360,42 @@ mod tests {
             vec!["a", "b c", "d", "e f", "g"]
         );
         assert!(shlex::split("unclosed '").is_none());
+    }
+
+    #[test]
+    fn tmux_key_names() {
+        use crate::term::{
+            Key, MOD_ALT, MOD_CTRL, MOD_SHIFT, KEY_BACKSPACE, KEY_DOWN, KEY_END, KEY_ESCAPE,
+            KEY_HOME, KEY_INSERT, KEY_LEFT, KEY_PAGE_DOWN, KEY_PAGE_UP, KEY_RETURN, KEY_RIGHT,
+            KEY_TAB, KEY_UP,
+        };
+        assert_eq!(tmux_key_name(&Key::Code(0x52, MOD_CTRL)).unwrap(), "C-r");
+        assert_eq!(tmux_key_name(&Key::Code(0x44, MOD_CTRL)).unwrap(), "C-d");
+        assert_eq!(tmux_key_name(&Key::Code(0x78, MOD_ALT)).unwrap(), "M-x");
+        assert_eq!(tmux_key_name(&Key::Code(0x58, MOD_ALT)).unwrap(), "M-X");
+        assert_eq!(tmux_key_name(&Key::Code(0x41, MOD_SHIFT)).unwrap(), "S-A");
+        assert_eq!(tmux_key_name(&Key::Code(KEY_UP, 0)).unwrap(), "Up");
+        assert_eq!(tmux_key_name(&Key::Code(KEY_UP, MOD_CTRL)).unwrap(), "C-Up");
+        assert_eq!(tmux_key_name(&Key::Code(KEY_RETURN, 0)).unwrap(), "Enter");
+        assert_eq!(tmux_key_name(&Key::Code(KEY_BACKSPACE, 0)).unwrap(), "Bspace");
+        assert_eq!(tmux_key_name(&Key::Code(KEY_ESCAPE, 0)).unwrap(), "Escape");
+        assert_eq!(tmux_key_name(&Key::Code(0x20, 0)).unwrap(), "Space");
+        assert_eq!(tmux_key_name(&Key::Char(' ')).unwrap(), "Space");
+        assert_eq!(tmux_key_name(&Key::Char('a')).unwrap(), "a");
+        assert_eq!(tmux_key_name(&Key::Char('我')).unwrap(), "我");
+        assert_eq!(tmux_key_name(&Key::Code(KEY_TAB, MOD_SHIFT)).unwrap(), "S-Tab");
+        // 方向键/功能键全覆盖
+        for (k, n) in [
+            (KEY_DOWN, "Down"),
+            (KEY_LEFT, "Left"),
+            (KEY_RIGHT, "Right"),
+            (KEY_PAGE_UP, "PageUp"),
+            (KEY_PAGE_DOWN, "PageDown"),
+            (KEY_HOME, "Home"),
+            (KEY_END, "End"),
+            (KEY_INSERT, "Insert"),
+        ] {
+            assert_eq!(tmux_key_name(&Key::Code(k, 0)).unwrap(), n);
+        }
     }
 }

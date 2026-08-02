@@ -41,6 +41,7 @@ pub const KEY_DOWN: i32 = 0xff54;
 pub const KEY_PAGE_UP: i32 = 0xff55;
 pub const KEY_PAGE_DOWN: i32 = 0xff56;
 pub const KEY_END: i32 = 0xff57;
+pub const KEY_INSERT: i32 = 0xff63;
 pub const KEY_DELETE: i32 = 0xffff;
 
 /// librime modifier mask (kShiftMask=1, kControlMask=4, kMod1Mask=8).
@@ -241,8 +242,13 @@ fn read_escape() -> io::Result<Option<(Key, Vec<u8>)>> {
                 b"\x1b[6~" => Key::Code(KEY_PAGE_DOWN, 0),
                 b"\x1b[7~" => Key::Code(KEY_HOME, 0),
                 b"\x1b[8~" => Key::Code(KEY_END, 0),
-                // 未识别的 CSI（如 \x1b[1;5A = Ctrl+方向键）：原样转发
-                _ => Key::Raw(raw.clone()),
+                // 未识别的 CSI：先尝试 kitty keyboard protocol 解析（现代终端/
+                // tmux extended-keys 把组合键编码成 \x1b[27;<mod>;<code>~ 或
+                // \x1b[<code>;<mod>u），成功则转发标准化后的传统字节。
+                _ => match parse_kitty_sequence(&raw) {
+                    Some((key, std_bytes)) => return Ok(Some((key, std_bytes))),
+                    None => Key::Raw(raw.clone()),
+                },
             }
         }
         b'O' => {
@@ -274,4 +280,208 @@ fn read_escape() -> io::Result<Option<(Key, Vec<u8>)>> {
         _ => Key::Raw(raw.clone()),
     };
     Ok(Some((key, raw)))
+}
+
+// ---------------------------------------------------------------------------
+// kitty keyboard protocol（tmux 3.4+ extended-keys、kitty、wezterm 等默认启用）
+//
+// 终端把组合键编码成 CSI 序列，而不是传统的单字节/传统 CSI：
+//   \x1b[27;<mod>;<code>~   （通用形式，code 为 Unicode 码点或特殊键码）
+//   \x1b[<code>;<mod>u      （CSI u 形式）
+// mod 位掩码：1=Shift 2=Alt 4=Ctrl 8=Super 16=Hyper 32=Meta。
+//
+// 解析后转成 (keysym, librime mask)，并把转发字节标准化为传统终端形式
+// （如 Ctrl+R → 0x12），这样目标 pane 里的程序（bash/vim 等）能正确识别。
+// ---------------------------------------------------------------------------
+
+/// 解析一条 kitty keyboard protocol 序列，返回 (按键, 标准化转发字节)。
+fn parse_kitty_sequence(raw: &[u8]) -> Option<(Key, Vec<u8>)> {
+    let s = raw.strip_prefix(b"\x1b[")?;
+    let (term, params) = s.split_last()?; // split_last 返回 (最后一个元素, 其余部分)
+    if *term != b'~' && *term != b'u' {
+        return None;
+    }
+    let mut nums = Vec::new();
+    for p in params.split(|&b| b == b';') {
+        nums.push(std::str::from_utf8(p).ok()?.parse::<i64>().ok()?);
+    }
+    // 通用形式 \x1b[27;<mod>;<code>~ ；CSI u 形式 \x1b[<code>;<mod>u
+    let (code, mod_bits) = if nums.len() == 3 && nums[0] == 27 && *term == b'~' {
+        (nums[2], nums[1])
+    } else if nums.len() >= 2 && *term == b'u' {
+        (nums[0], nums[1])
+    } else {
+        return None;
+    };
+    // 只处理 Shift/Alt/Ctrl（传统终端字节无法表达 Super/Hyper/Meta）
+    if mod_bits & !(1 | 2 | 4) != 0 {
+        return None;
+    }
+    let keysym = kitty_code_to_keysym(code)?;
+    let mask = kitty_mod_to_librime(mod_bits);
+    let std_bytes = standard_bytes(keysym, mask);
+    Some((Key::Code(keysym, mask), std_bytes))
+}
+
+/// kitty 键码 → X11 keysym（与 lua/rime/key.lua 一致）。
+fn kitty_code_to_keysym(code: i64) -> Option<i32> {
+    if code > 0 && code < 256 {
+        // 普通字符：字母转大写，与单字节 Ctrl+字母 路径（0x12 → 'R'）保持一致
+        let c = code as i32;
+        return Some(if (0x61..=0x7a).contains(&c) { c - 0x20 } else { c });
+    }
+    // kitty 特殊键码（私用区 57344 起，见 kitty keyboard protocol 文档）
+    let k = match code {
+        57344 => KEY_ESCAPE,
+        57345 => KEY_RETURN,
+        57346 => KEY_TAB,
+        57347 => KEY_BACKSPACE,
+        57348 => 0xff63, // Insert
+        57349 => KEY_DELETE,
+        57350 => KEY_LEFT,
+        57351 => KEY_RIGHT,
+        57352 => KEY_UP,
+        57353 => KEY_DOWN,
+        57354 => KEY_PAGE_UP,
+        57355 => KEY_PAGE_DOWN,
+        57356 => KEY_HOME,
+        57357 => KEY_END,
+        57364..=57375 => 65470 + (code - 57364) as i32, // F1..F12 (XK_F1=0xffbe)
+        _ => return None,
+    };
+    Some(k)
+}
+
+/// kitty 修饰位 → librime 修饰掩码（S=1, C=4, A=8）。
+fn kitty_mod_to_librime(mod_bits: i64) -> i32 {
+    let mut mask = 0;
+    if mod_bits & 1 != 0 {
+        mask |= MOD_SHIFT;
+    }
+    if mod_bits & 2 != 0 {
+        mask |= MOD_ALT;
+    }
+    if mod_bits & 4 != 0 {
+        mask |= MOD_CTRL;
+    }
+    mask
+}
+
+/// 把 (keysym, mask) 编码为传统终端字节（转发给目标 pane 用）。
+fn standard_bytes(code: i32, mask: i32) -> Vec<u8> {
+    match code {
+        KEY_UP => return csi_key(b'A', None, mask),
+        KEY_DOWN => return csi_key(b'B', None, mask),
+        KEY_RIGHT => return csi_key(b'C', None, mask),
+        KEY_LEFT => return csi_key(b'D', None, mask),
+        KEY_HOME => return csi_key(0, Some(1), mask),
+        KEY_END => return csi_key(0, Some(4), mask),
+        KEY_PAGE_UP => return csi_key(0, Some(5), mask),
+        KEY_PAGE_DOWN => return csi_key(0, Some(6), mask),
+        KEY_DELETE => return csi_key(0, Some(3), mask),
+        KEY_INSERT => return csi_key(0, Some(2), mask),
+        KEY_BACKSPACE => return vec![0x7f],
+        KEY_TAB => return if mask & MOD_SHIFT != 0 { b"\x1b[Z".to_vec() } else { vec![0x09] },
+        KEY_RETURN => return vec![0x0d],
+        KEY_ESCAPE => return vec![0x1b],
+        _ => {}
+    }
+    let mut v = Vec::new();
+    if mask & MOD_ALT != 0 {
+        v.push(0x1b);
+    }
+    let c = if mask & MOD_CTRL != 0 {
+        (code & 0x1f) as u8 // Ctrl+字母/标点 → 单字节控制符
+    } else {
+        let mut c = code as u8;
+        if mask & MOD_SHIFT != 0 && (0x61..=0x7a).contains(&code) {
+            c -= 0x20; // 大写
+        }
+        c
+    };
+    v.push(c);
+    v
+}
+
+/// 传统 CSI 按键：箭头键 \x1b[1;{mod}A，或 \x1b[{n};{mod}~ 形式。
+fn csi_key(letter: u8, tilde: Option<u8>, mask: i32) -> Vec<u8> {
+    let m = trad_mod(mask);
+    if let Some(n) = tilde {
+        if m == 0 {
+            format!("\x1b[{}~", n).into_bytes()
+        } else {
+            format!("\x1b[{};{}~", n, m).into_bytes()
+        }
+    } else if m == 0 {
+        vec![0x1b, b'[', letter]
+    } else {
+        format!("\x1b[1;{}{}", m, letter as char).into_bytes()
+    }
+}
+
+/// librime mask → 传统 CSI 修饰数字（1=Shift 2=Alt 4=Ctrl，组合相加）。
+fn trad_mod(mask: i32) -> i32 {
+    let mut m = 0;
+    if mask & MOD_SHIFT != 0 {
+        m += 1;
+    }
+    if mask & MOD_ALT != 0 {
+        m += 2;
+    }
+    if mask & MOD_CTRL != 0 {
+        m += 4;
+    }
+    m
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kitty_ctrl_letter() {
+        // Ctrl+R: \x1b[27;4;114~ → 0x12；Ctrl+D → 0x04
+        let (key, bytes) = parse_kitty_sequence(b"\x1b[27;4;114~").unwrap();
+        assert_eq!(key, Key::Code(0x52, MOD_CTRL));
+        assert_eq!(bytes, b"\x12");
+        let (key, bytes) = parse_kitty_sequence(b"\x1b[27;4;100~").unwrap();
+        assert_eq!(key, Key::Code(0x44, MOD_CTRL));
+        assert_eq!(bytes, b"\x04");
+    }
+
+    #[test]
+    fn kitty_csi_u_and_modifiers() {
+        // CSI u 形式：\x1b[114;4u = Ctrl+R
+        let (key, bytes) = parse_kitty_sequence(b"\x1b[114;4u").unwrap();
+        assert_eq!(key, Key::Code(0x52, MOD_CTRL));
+        assert_eq!(bytes, b"\x12");
+        // Ctrl+Shift+A: mod=5
+        let (key, bytes) = parse_kitty_sequence(b"\x1b[27;5;97~").unwrap();
+        assert_eq!(key, Key::Code(0x41, MOD_SHIFT | MOD_CTRL));
+        assert_eq!(bytes, b"\x01");
+        // Alt+X: mod=2
+        let (key, bytes) = parse_kitty_sequence(b"\x1b[27;2;120~").unwrap();
+        assert_eq!(key, Key::Code(0x58, MOD_ALT));
+        assert_eq!(bytes, b"\x1bX");
+    }
+
+    #[test]
+    fn kitty_special_keys() {
+        // Ctrl+Up: kitty 码 57352
+        let (key, bytes) = parse_kitty_sequence(b"\x1b[27;4;57352~").unwrap();
+        assert_eq!(key, Key::Code(KEY_UP, MOD_CTRL));
+        assert_eq!(bytes, b"\x1b[1;4A");
+        // 无修饰 Home: 57356
+        let (key, bytes) = parse_kitty_sequence(b"\x1b[27;0;57356~").unwrap();
+        assert_eq!(key, Key::Code(KEY_HOME, 0));
+        assert_eq!(bytes, b"\x1b[1~");
+    }
+
+    #[test]
+    fn kitty_rejects_traditional_and_unknown() {
+        // 传统 CSI 不是 kitty 序列
+        assert!(parse_kitty_sequence(b"\x1b[1;5A").is_none());
+        // Super 修饰（8）无法用传统字节表达 → 不解析
+        assert!(parse_kitty_sequence(b"\x1b[27;8;114~").is_none());
+    }
 }
