@@ -10,8 +10,9 @@ librime 运行在独立的 Rust 守护进程（`rime-daemon`）中，Neovim 通�
 - 多个 Neovim 实例共享同一个引擎与用户词典（LevelDB userdb 单进程打开，无锁冲突）
 - 输入过程中浮窗显示 preedit（拼音串）与候选词
 - 首次使用自动部署词库（编译 `.table.bin` / `.prism.bin`），之后增量更新
-- 每个 buffer 独立记忆输入法开关状态（基于 `iminsert`）
+- 每个 buffer 独立记忆输入法开关状态（手动 `iminsert` + 自动 `rime_auto`）
 - 支持候选高亮、翻页、`<Space>` 上屏 / 关闭
+- 按上下文自动切换中英文输入（可选，`vim.b.enable_auto_rime` 启用）
 - daemon 懒启动：第一个实例自动拉起，最后一个实例退出后自动关闭
 - 附带 Rust 编写的终端客户端 `rime-cli`（3 行界面：上屏文本 / preedit / 候选词），
   启动时自动连接 daemon，与 Neovim 共享同一引擎
@@ -80,11 +81,39 @@ rime.setup { ... }
 
 | 函数                                       | 说明                              |
 | ------------------------------------------ | --------------------------------- |
-| `rime.toggle()` / `enable()` / `disable()` | 切换 / 开启 / 关闭输入法          |
-| `rime.get_enabled()`                       | 当前是否开启                      |
+| `rime.toggle()` / `enable()` / `disable()` | 手动切换 / 开启 / 关闭输入法（只操作 `iminsert`；`toggle` 同时清除自动标记） |
+| `rime.get_enabled()`                       | 当前是否开启（自动标记优先于手动 `iminsert`） |
+| `rime.set_auto(state)`                     | 设置 / 清除自动标记（`true` / `false` / `nil`） |
 | `rime.get_current_schema()`                | 当前方案 id                       |
 | `rime.get_schema_name()`                   | 当前方案名称                      |
 | `rime.call(input)`                         | 把一个按键/字符交给 Rime 引擎处理 |
+
+## 按上下文自动切换（可选）
+
+默认关闭（opt-in）。在某个 buffer 设置 `vim.b.enable_auto_rime = true` 启用，
+该 buffer 内光标移动 / 输入时会按上下文自动切换中英文；设置为 `false` 或清除（`nil`）
+则回到纯手动模式。
+
+```lua
+-- 启用（例如在 setup 里）
+vim.b.enable_auto_rime = true
+```
+
+决策规则（见 `lua/rime/rule.lua`，优先级从高到低）：
+
+1. 光标前是中文 → 中文输入；是 `a-zA-Z` → 英文输入
+2. 光标前是空格：空格前是中文（“中文+空格”）时，光标后是中文 → 中文，否则 → 英文；
+   空格前是 `a-zA-Z`（“字母+空格”）→ 英文
+3. 光标前是数字/符号等无法判断的字符 → 向前扫描，跳过数字/符号/空格，
+   找第一个可判断字符（中文 → 中文，字母 → 英文）
+4. 扫描到行首仍未找到 → 尝试光标后（后中文 → 中文，后 `a-zA-Z` → 英文）
+5. 仍无法判断 → 清除自动标记（回到手动）
+
+标记机制：自动规则只写 buffer 变量 `vim.b.rime_auto`（优先级高于手动 `iminsert`，
+`get_enabled()` 返回生效状态）；手动 `toggle()` / `enable()` / `disable()` 只操作
+`iminsert`，其中 `toggle()` 基于当前生效状态翻转并清除自动标记，回到手动。
+组词（拼音输入中）不会被打断：组词期间拼音字母不写入 buffer、光标不动，
+自动切换只在选字上屏 / 移动光标 / 进入插入模式时按上下文校正一次。
 
 ## 使用方法
 

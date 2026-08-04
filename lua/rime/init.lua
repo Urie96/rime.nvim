@@ -3,6 +3,7 @@ local Keymap = require 'rime.keymap'
 local Key = require 'rime.key'
 local UI = require 'rime.ui'
 local Session = require 'rime.session'
+local Rule = require 'rime.rule'
 local M = {}
 
 ---Initialize rime with user config.
@@ -21,7 +22,7 @@ function M.setup(opts)
     end
   end, { bang = true, desc = 'Deploy rime data' })
 
-  local augroup_id = vim.api.nvim_create_augroup('rime', {})
+  local augroup_id = vim.api.nvim_create_augroup('rime', { clear = true })
   -- 每次插入模式下输入一个字符前触发，把字符交给 Rime 处理
   vim.api.nvim_create_autocmd('InsertCharPre', {
     group = augroup_id,
@@ -36,6 +37,9 @@ function M.setup(opts)
       Win.update()
     end,
   })
+
+  -- 按上下文自动切换中/英文输入（见 rime/rule.lua）
+  Rule.setup(M, augroup_id)
 end
 
 ---把 Rime 的产出（上屏文本）写回编辑器。
@@ -104,18 +108,36 @@ function M.call(input)
   Keymap.set_special(Win.has_preedit() and M.callback or nil)
 end
 
----启用状态直接存在 buffer 变量 iminsert 里，每个 buffer 独立记忆
+---设置手动开关状态，存在 buffer 变量 iminsert 里，每个 buffer 独立记忆
 ---@param is_enabled boolean
 function M.set_enabled(is_enabled) vim.b.iminsert = is_enabled end
 
+---当前是否开启：自动标记（vim.b.rime_auto）优先于手动 iminsert。
 ---@return boolean
-function M.get_enabled() return vim.b.iminsert or false end
+function M.get_enabled()
+  if vim.b.rime_auto ~= nil then return vim.b.rime_auto end
+  return vim.b.iminsert or false
+end
 
 function M.enable() M.set_enabled(true) end
 
 function M.disable() M.set_enabled(false) end
 
-function M.toggle() M.set_enabled(not M.get_enabled()) end
+---设置自动切换状态（按上下文规则写入），优先级高于手动 iminsert。
+---@param state boolean|nil true=中文/开启, false=英文/关闭, nil=清除自动标记（回到手动）
+function M.set_auto(state)
+  if state == nil then
+    vim.b.rime_auto = nil
+  else
+    vim.b.rime_auto = state
+  end
+end
+
+---手动切换：基于当前生效状态翻转手动标记，并清除自动标记（回到手动模式）。
+function M.toggle()
+  M.set_enabled(not M.get_enabled())
+  vim.b.rime_auto = nil
+end
 
 ---@param key any?
 ---@return function
