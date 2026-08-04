@@ -8,10 +8,6 @@ local M = {}
 ---Initialize rime with user config.
 ---@param opts { shared_data_dir?: string, user_data_dir?: string, log_dir?: string }
 function M.setup(opts)
-  vim.api.nvim_set_hl(0, 'RimeIndex', { fg = '#f9e2af' })
-  vim.api.nvim_set_hl(0, 'RimeCandidate', {}) -- inherit Normal foreground
-  vim.api.nvim_set_hl(0, 'RimePreedit', { fg = '#a6e3a1' })
-
   Session.init(opts)
 
   vim.api.nvim_create_user_command('RimeDeploy', function(e)
@@ -71,7 +67,7 @@ function M.draw(key)
   -- 引擎返回 true 表示该键被 Rime 消费（如拼音串/候选上屏），继续处理后续键；
   -- 返回 false 表示未消费（如 Escape/回车），停止并把原始键交给编辑器
   if not Session.process_key(code, key.mask) then
-    if key.mask ~= 0 or key.code < (' '):byte() or key.code > ('~'):byte() then return '', {}, 0, {} end
+    if (key.mask or 0) ~= 0 or key.code < (' '):byte() or key.code > ('~'):byte() then return '', {}, 0, {} end
     return string.char(key.code), {}, 0, {}
   end
   local context = Session.get_context()

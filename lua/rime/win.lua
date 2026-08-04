@@ -7,6 +7,12 @@ local M = {
   config = {},
 }
 
+local function ensure_highlight()
+  vim.api.nvim_set_hl(0, 'RimeIndex', { fg = '#f9e2af' })
+  vim.api.nvim_set_hl(0, 'RimeCandidate', {}) -- inherit Normal foreground
+  vim.api.nvim_set_hl(0, 'RimePreedit', { fg = '#a6e3a1' })
+end
+
 ---If the windows is valid
 ---@return boolean is_valid
 function M.is_valid() return vim.api.nvim_win_is_valid(M.win_id) end
@@ -24,6 +30,8 @@ function M._update()
   -- pcall 防御：若在 textlock（如 InsertCharPre）中意外触发，跳过本次更新
   -- 而非抛出 E565 中断整个输入链。
   if not pcall(vim.api.nvim_buf_set_lines, M.buf_id, 0, #M.lines, false, M.lines) then return end
+
+  pcall(ensure_highlight)
 
   for line_idx, hl_list in pairs(M.highlights) do
     for _, hl in ipairs(hl_list) do
