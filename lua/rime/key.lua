@@ -1,14 +1,3 @@
-local Key = {
-  code = (' '):byte(),
-  mask = 0,
-}
-
----@return string
-function Key:tostring()
-  if self.mask ~= 0 or self.code < (' '):byte() or self.code > ('~'):byte() then return '' end
-  return string.char(self.code)
-end
-
 local M = {
   vim_to_rime = {
     pageup = 'Page_Up',
@@ -94,19 +83,11 @@ local M = {
   },
 }
 
----@param key table?
----@return table
-function M.new(key)
-  key = key or {}
-  setmetatable(key, { __tostring = Key.tostring, __index = Key })
-  return key
-end
-
 ---@param name string
 ---@return table
 function M.from_vim(name)
   name = M.aliases[name:lower()] or name
-  if #name == 1 then return M.new { code = name:byte() } end
+  if #name == 1 then return { code = name:byte() } end
   name = name:sub(2, -2):lower()
   local mask = 0
   for prefix in name:gmatch '([^-])-' do
@@ -115,12 +96,8 @@ function M.from_vim(name)
   name = name:match '[^-]+$' or '-'
   name = M.aliases['<' .. name:lower() .. '>'] or name
   if mask == M.modifiers.C then name = name:lower() end
-  if #name == 1 then return M.new { code = name:byte(), mask = mask } end
-  return M.new { code = M.convert(name:lower()), mask = mask }
+  if #name == 1 then return { code = name:byte(), mask = mask } end
+  return { code = M.keys[M.vim_to_rime[name] or (name:sub(1, 1):upper() .. name:sub(2):lower())], mask = mask }
 end
-
----@param name string
----@return integer
-function M.convert(name) return M.keys[M.vim_to_rime[name] or (name:sub(1, 1):upper() .. name:sub(2):lower())] end
 
 return M

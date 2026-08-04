@@ -1,11 +1,3 @@
--- ensure rime highlight groups exist
-local function ensure_highlights()
-  pcall(vim.api.nvim_set_hl, 0, 'RimeIndex', { fg = '#909090' })
-  pcall(vim.api.nvim_set_hl, 0, 'RimeCandidate', {}) -- inherit Normal foreground
-end
-
-local candidate_zindex = 1000
-
 local M = {
   win_id = -1,
   buf_id = vim.api.nvim_create_buf(false, true),
@@ -31,13 +23,7 @@ function M._update()
   end
   -- pcall 防御：若在 textlock（如 InsertCharPre）中意外触发，跳过本次更新
   -- 而非抛出 E565 中断整个输入链。
-  if not pcall(vim.api.nvim_buf_set_lines, M.buf_id, 0, #M.lines, false, M.lines) then
-    return
-  end
-
-  -- Apply highlights
-  vim.api.nvim_buf_clear_namespace(M.buf_id, M.ns_id, 0, -1)
-  ensure_highlights()
+  if not pcall(vim.api.nvim_buf_set_lines, M.buf_id, 0, #M.lines, false, M.lines) then return end
 
   for line_idx, hl_list in pairs(M.highlights) do
     for _, hl in ipairs(hl_list) do
@@ -78,7 +64,7 @@ function M.update(lines, col, highlights)
     width = width,
     row = 1,
     col = col or 0,
-    zindex = candidate_zindex,
+    zindex = 1000,
   }
   vim.schedule(function() M._update() end)
 end

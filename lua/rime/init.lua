@@ -1,4 +1,3 @@
----@module rime
 local Win = require 'rime.win'
 local Keymap = require 'rime.keymap'
 local Key = require 'rime.key'
@@ -9,6 +8,10 @@ local M = {}
 ---Initialize rime with user config.
 ---@param opts { shared_data_dir?: string, user_data_dir?: string, log_dir?: string }
 function M.setup(opts)
+  vim.api.nvim_set_hl(0, 'RimeIndex', { fg = '#f9e2af' })
+  vim.api.nvim_set_hl(0, 'RimeCandidate', {}) -- inherit Normal foreground
+  vim.api.nvim_set_hl(0, 'RimePreedit', { fg = '#a6e3a1' })
+
   Session.init(opts)
 
   vim.api.nvim_create_user_command('RimeDeploy', function(e)
@@ -52,23 +55,24 @@ function M.feed_keys(text)
 end
 
 ---把按键逐个交给 Rime 引擎处理，返回 {上屏文本, 候选行, 光标列, 高亮}。
----@param keys table
+---@param key table
 ---@return string, string[], integer, table
-function M.draw(keys)
-  for _, key in ipairs(keys) do
-    local code = key.code
-    -- 把 ↑/↓ 改写成 PageUp/PageDown，让上下键直接翻候选页。
-    -- 按键码是 librime 沿用的 X11 keysym（见 key.lua 的 M.keys）：
-    --   65362 (0xFF52) = XK_Up       65365 (0xFF55) = XK_PageUp
-    --   65364 (0xFF54) = XK_Down     65366 (0xFF56) = XK_PageDown
-    if code == 65362 then
-      code = 65365
-    elseif code == 65364 then
-      code = 65366
-    end
-    -- 引擎返回 true 表示该键被 Rime 消费（如拼音串/候选上屏），继续处理后续键；
-    -- 返回 false 表示未消费（如 Escape/回车），停止并把原始键交给编辑器
-    if not Session.process_key(code, key.mask) then return tostring(key), {}, 0, {} end
+function M.draw(key)
+  local code = key.code
+  -- 把 ↑/↓ 改写成 PageUp/PageDown，让上下键直接翻候选页。
+  -- 按键码是 librime 沿用的 X11 keysym（见 key.lua 的 M.keys）：
+  --   65362 (0xFF52) = XK_Up       65365 (0xFF55) = XK_PageUp
+  --   65364 (0xFF54) = XK_Down     65366 (0xFF56) = XK_PageDown
+  if code == 65362 then
+    code = 65365
+  elseif code == 65364 then
+    code = 65366
+  end
+  -- 引擎返回 true 表示该键被 Rime 消费（如拼音串/候选上屏），继续处理后续键；
+  -- 返回 false 表示未消费（如 Escape/回车），停止并把原始键交给编辑器
+  if not Session.process_key(code, key.mask) then
+    if key.mask ~= 0 or key.code < (' '):byte() or key.code > ('~'):byte() then return '', {}, 0, {} end
+    return string.char(key.code), {}, 0, {}
   end
   local context = Session.get_context()
   if context == nil or context.menu.num_candidates == 0 then return Session.get_commit_text(), {}, 0, {} end
@@ -76,14 +80,7 @@ function M.draw(keys)
   return '', lines, col, highlights or {}
 end
 
----@param key  string
----@return string, string[], integer, table
-function M.process(name)
-  local keys = { Key.from_vim(name) }
-  return M.draw(keys)
-end
-
----@return string
+---@return string?
 function M.get_current_schema() return Session.get_current_schema() end
 
 ---@return string
@@ -94,7 +91,7 @@ function M.call(input)
   if not M.get_enabled() then return end
 
   input = input or vim.v.char
-  -- 没有候选/拼音串时，按下禁用键（默认 <Space>）直接关闭输入法
+  -- 没有候选/拼音串时，按下禁用键直接关闭输入法
   if not Win.has_preedit() then
     for _, disable_key in ipairs(Keymap.keys.disable) do
       if input == vim.keycode(disable_key) then
@@ -104,7 +101,7 @@ function M.call(input)
     end
   end
 
-  local text, lines, col, highlights = M.draw { Key.from_vim(input) }
+  local text, lines, col, highlights = M.draw(Key.from_vim(input))
   M.feed_keys(text)
   Win.update(lines, col, highlights)
   -- 有候选时把特殊键（数字选字、翻页等）映射到本函数，避免被编辑器拦截

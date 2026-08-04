@@ -35,7 +35,7 @@ end
 local M = {
   keys = {
     special = special,
-    disable = { '<Space>' },
+    disable = {},
   },
 }
 
